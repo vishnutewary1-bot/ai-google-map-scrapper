@@ -50,6 +50,13 @@ class ExportRequest(BaseModel):
     filters: Optional[dict] = None
     filename: Optional[str] = None
 
+class BulkScrapeRequest(BaseModel):
+    search_query: str
+    locations: List[str]
+    max_results_per_location: int = 50
+    delay_between_locations: int = 60
+    extract_emails: bool = False
+
 class JobResponse(BaseModel):
     id: int
     search_query: str
@@ -394,6 +401,25 @@ async def export_leads(request: ExportRequest):
     try:
         exporter = DataExporter()
 
+        # Get count of leads being exported
+        with db_manager.get_session() as session:
+            query = session.query(BusinessLead)
+
+            # Apply same filters
+            if request.filters:
+                if request.filters.get('has_phone'):
+                    query = query.filter(BusinessLead.phone.isnot(None))
+                if request.filters.get('has_website'):
+                    query = query.filter(BusinessLead.website.isnot(None))
+                if request.filters.get('has_email'):
+                    query = query.filter(BusinessLead.email.isnot(None))
+                if request.filters.get('city'):
+                    query = query.filter(BusinessLead.city == request.filters['city'])
+                if request.filters.get('min_quality_score'):
+                    query = query.filter(BusinessLead.data_quality_score >= request.filters['min_quality_score'])
+
+            count = query.count()
+
         if request.format == 'csv':
             filepath = exporter.export_to_csv(filters=request.filters, filename=request.filename)
         elif request.format == 'json':
@@ -406,13 +432,151 @@ async def export_leads(request: ExportRequest):
         if not filepath:
             raise HTTPException(status_code=404, detail="No data to export")
 
-        return {"filepath": filepath, "status": "success"}
+        return {"filepath": filepath, "status": "success", "count": count}
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error exporting: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/bulk-scrape")
+async def start_bulk_scrape(request: BulkScrapeRequest, background_tasks: BackgroundTasks):
+    """Start bulk scraping for multiple locations."""
+    try:
+        job_ids = []
+
+        for location in request.locations:
+            # Create a job for each location
+            with db_manager.get_session() as session:
+                job = ScrapeJob(
+                    search_query=request.search_query,
+                    location=location,
+                    max_results=request.max_results_per_location,
+                    leads_target=request.max_results_per_location,
+                    status='pending',
+                    started_at=datetime.now()
+                )
+                session.add(job)
+                session.commit()
+                session.refresh(job)
+                job_ids.append(job.id)
+
+        # Start background tasks for each location
+        for i, job_id in enumerate(job_ids):
+            # Add delay between jobs
+            if i > 0 and request.delay_between_locations > 0:
+                await asyncio.sleep(request.delay_between_locations)
+
+            scrape_req = ScrapeRequest(
+                search_query=request.search_query,
+                location=request.locations[i],
+                max_results=request.max_results_per_location,
+                use_proxies=False
+            )
+            background_tasks.add_task(run_scrape_job, job_id, scrape_req)
+
+        return {
+            "status": "success",
+            "message": f"Started {len(job_ids)} scraping jobs",
+            "job_ids": job_ids
+        }
+
+    except Exception as e:
+        logger.error(f"Error starting bulk scrape: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/analytics")
+async def get_analytics():
+    """Get analytics data for dashboard."""
+    try:
+        with db_manager.get_session() as session:
+            from sqlalchemy import func
+            from datetime import datetime, timedelta
+
+            # Top categories
+            top_categories = session.query(
+                BusinessLead.category,
+                func.count(BusinessLead.id).label('count')
+            ).filter(
+                BusinessLead.category.isnot(None)
+            ).group_by(
+                BusinessLead.category
+            ).order_by(
+                func.count(BusinessLead.id).desc()
+            ).limit(10).all()
+
+            # Quality distribution
+            quality_ranges = [
+                session.query(func.count(BusinessLead.id)).filter(
+                    BusinessLead.data_quality_score >= 80
+                ).scalar() or 0,
+                session.query(func.count(BusinessLead.id)).filter(
+                    BusinessLead.data_quality_score >= 60,
+                    BusinessLead.data_quality_score < 80
+                ).scalar() or 0,
+                session.query(func.count(BusinessLead.id)).filter(
+                    BusinessLead.data_quality_score >= 40,
+                    BusinessLead.data_quality_score < 60
+                ).scalar() or 0,
+                session.query(func.count(BusinessLead.id)).filter(
+                    BusinessLead.data_quality_score < 40
+                ).scalar() or 0
+            ]
+
+            # Activity timeline (last 7 days)
+            activity_timeline = []
+            for i in range(6, -1, -1):
+                date = datetime.now().date() - timedelta(days=i)
+                count = session.query(func.count(BusinessLead.id)).filter(
+                    func.date(BusinessLead.scraped_at) == date
+                ).scalar() or 0
+                activity_timeline.append({
+                    'date': date.strftime('%Y-%m-%d'),
+                    'count': count
+                })
+
+            return {
+                "top_categories": [
+                    {"category": cat, "count": count}
+                    for cat, count in top_categories
+                ],
+                "quality_distribution": quality_ranges,
+                "activity_timeline": activity_timeline
+            }
+
+    except Exception as e:
+        logger.error(f"Error getting analytics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/leads/{lead_id}")
+async def delete_lead(lead_id: int):
+    """Delete a specific lead."""
+    try:
+        with db_manager.get_session() as session:
+            lead = session.query(BusinessLead).filter_by(id=lead_id).first()
+
+            if not lead:
+                raise HTTPException(status_code=404, detail="Lead not found")
+
+            session.delete(lead)
+            session.commit()
+
+            return {"status": "success", "message": "Lead deleted"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting lead: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Serve the new dashboard
+app.mount("/static", StaticFiles(directory="frontend"), name="static")
+
+@app.get("/dashboard")
+async def dashboard():
+    """Serve the professional dashboard."""
+    return FileResponse("frontend/dashboard.html")
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
