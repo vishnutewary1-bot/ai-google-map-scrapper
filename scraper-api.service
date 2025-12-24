@@ -1,0 +1,17 @@
+[Unit]
+Description=Google Maps Scraper API
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/google-maps-scraper
+Environment="PATH=/opt/google-maps-scraper/venv/bin"
+ExecStart=/opt/google-maps-scraper/venv/bin/uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers 4
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
