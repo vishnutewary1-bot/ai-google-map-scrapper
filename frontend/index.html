@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MapLeads Pro - Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f7fa;
+            color: #333;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .header p {
+            opacity: 0.9;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            border-left: 4px solid #667eea;
+        }
+
+        .stat-card h3 {
+            font-size: 0.875rem;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-card .value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #1e293b;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            margin-bottom: 2rem;
+        }
+
+        .card h2 {
+            margin-bottom: 1rem;
+            color: #1e293b;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: #475569;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.2s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 2fr 2fr 1fr;
+            gap: 1rem;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 0.875rem 1.5rem;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: #64748b;
+        }
+
+        .btn-export {
+            background: #10b981;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .table thead {
+            background: #f8fafc;
+        }
+
+        .table th,
+        .table td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .table th {
+            font-weight: 600;
+            color: #475569;
+            font-size: 0.875rem;
+            text-transform: uppercase;
+        }
+
+        .table tbody tr:hover {
+            background: #f8fafc;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .badge-success {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .badge-warning {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .badge-error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .badge-info {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .progress {
+            width: 100%;
+            height: 8px;
+            background: #e2e8f0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #64748b;
+        }
+
+        .spinner {
+            border: 3px solid #e2e8f0;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .tabs {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .tab {
+            padding: 0.75rem 1.5rem;
+            background: none;
+            border: none;
+            font-size: 1rem;
+            font-weight: 500;
+            color: #64748b;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .notification {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            background: white;
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1000;
+            animation: slideIn 0.3s;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+
+        @media (max-width: 768px) {
+            .form-row,
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🗺️ MapLeads Pro</h1>
+        <p>Google Maps Lead Scraper Dashboard</p>
+    </div>
+
+    <div class="container">
+        <!-- Stats Section -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Total Leads</h3>
+                <div class="value" id="stat-total-leads">0</div>
+            </div>
+            <div class="stat-card" style="border-left-color: #10b981;">
+                <h3>With Phone</h3>
+                <div class="value" id="stat-with-phone">0</div>
+            </div>
+            <div class="stat-card" style="border-left-color: #f59e0b;">
+                <h3>With Website</h3>
+                <div class="value" id="stat-with-website">0</div>
+            </div>
+            <div class="stat-card" style="border-left-color: #ef4444;">
+                <h3>Avg Quality</h3>
+                <div class="value" id="stat-avg-quality">0%</div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+            <button class="tab active" onclick="showTab('new-scrape')">🚀 New Scrape</button>
+            <button class="tab" onclick="showTab('jobs')">📊 Jobs</button>
+            <button class="tab" onclick="showTab('leads')">📋 Leads</button>
+            <button class="tab" onclick="showTab('export')">💾 Export</button>
+        </div>
+
+        <!-- New Scrape Tab -->
+        <div class="tab-content active" id="tab-new-scrape">
+            <div class="card">
+                <h2>Start New Scrape Job</h2>
+                <form id="scrape-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="search-query">Search Query *</label>
+                            <input type="text" id="search-query" placeholder="e.g., restaurants, doctors" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="location">Location</label>
+                            <input type="text" id="location" placeholder="e.g., Mumbai, Delhi">
+                        </div>
+                        <div class="form-group">
+                            <label for="max-results">Max Results</label>
+                            <input type="number" id="max-results" value="50" min="1" max="500">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="use-proxies"> Use Proxy Rotation (slower but safer)
+                        </label>
+                    </div>
+                    <button type="submit" class="btn">🚀 Start Scraping</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Jobs Tab -->
+        <div class="tab-content" id="tab-jobs">
+            <div class="card">
+                <h2>Scrape Jobs</h2>
+                <div id="jobs-list" class="loading">
+                    <div class="spinner"></div>
+                    <p>Loading jobs...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Leads Tab -->
+        <div class="tab-content" id="tab-leads">
+            <div class="card">
+                <h2>Scraped Leads</h2>
+                <div id="leads-list" class="loading">
+                    <div class="spinner"></div>
+                    <p>Loading leads...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Export Tab -->
+        <div class="tab-content" id="tab-export">
+            <div class="card">
+                <h2>Export Leads</h2>
+                <form id="export-form">
+                    <div class="form-group">
+                        <label for="export-format">Export Format</label>
+                        <select id="export-format">
+                            <option value="csv">CSV (Excel compatible)</option>
+                            <option value="json">JSON</option>
+                            <option value="cold_calling">Cold Calling Format</option>
+                        </select>
+                    </div>
+                    <h3>Filters</h3>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="filter-phone"> Only leads with phone numbers
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="filter-website"> Only leads with websites
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="filter-email"> Only leads with emails
+                        </label>
+                    </div>
+                    <button type="submit" class="btn btn-export">💾 Export Data</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000/api';
+        let ws = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadStats();
+            connectWebSocket();
+            setInterval(loadStats, 30000); // Refresh every 30s
+        });
+
+        // Tab switching
+        function showTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+
+            event.target.classList.add('active');
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+
+            if (tabName === 'jobs') loadJobs();
+            if (tabName === 'leads') loadLeads();
+        }
+
+        // Load stats
+        async function loadStats() {
+            try {
+                const response = await fetch(`${API_URL}/stats`);
+                const stats = await response.json();
+
+                document.getElementById('stat-total-leads').textContent = stats.total_leads.toLocaleString();
+                document.getElementById('stat-with-phone').textContent = stats.leads_with_phone.toLocaleString();
+                document.getElementById('stat-with-website').textContent = stats.leads_with_website.toLocaleString();
+                document.getElementById('stat-avg-quality').textContent = stats.average_quality_score.toFixed(1) + '%';
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+
+        // Load jobs
+        async function loadJobs() {
+            try {
+                const response = await fetch(`${API_URL}/jobs?limit=20`);
+                const jobs = await response.json();
+
+                const container = document.getElementById('jobs-list');
+                container.innerHTML = `
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Query</th>
+                                <th>Status</th>
+                                <th>Progress</th>
+                                <th>Started</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${jobs.map(job => `
+                                <tr>
+                                    <td>#${job.id}</td>
+                                    <td>${job.search_query}</td>
+                                    <td><span class="badge badge-${getStatusColor(job.status)}">${job.status}</span></td>
+                                    <td>
+                                        <div>${job.leads_scraped} / ${job.leads_target}</div>
+                                        <div class="progress">
+                                            <div class="progress-bar" style="width: ${(job.leads_scraped / job.leads_target * 100)}%"></div>
+                                        </div>
+                                    </td>
+                                    <td>${new Date(job.started_at).toLocaleString()}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+            } catch (error) {
+                console.error('Error loading jobs:', error);
+            }
+        }
+
+        // Load leads
+        async function loadLeads() {
+            try {
+                const response = await fetch(`${API_URL}/leads?limit=50`);
+                const leads = await response.json();
+
+                const container = document.getElementById('leads-list');
+                container.innerHTML = `
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Business Name</th>
+                                <th>City</th>
+                                <th>Phone</th>
+                                <th>Category</th>
+                                <th>Quality</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${leads.map(lead => `
+                                <tr>
+                                    <td><strong>${lead.business_name}</strong></td>
+                                    <td>${lead.city || '-'}</td>
+                                    <td>${lead.phone || '-'}</td>
+                                    <td>${lead.category || '-'}</td>
+                                    <td><span class="badge badge-${getQualityColor(lead.data_quality_score)}">${lead.data_quality_score}%</span></td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+            } catch (error) {
+                console.error('Error loading leads:', error);
+            }
+        }
+
+        // Start scrape
+        document.getElementById('scrape-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const data = {
+                search_query: document.getElementById('search-query').value,
+                location: document.getElementById('location').value || null,
+                max_results: parseInt(document.getElementById('max-results').value),
+                use_proxies: document.getElementById('use-proxies').checked
+            };
+
+            try {
+                const response = await fetch(`${API_URL}/scrape`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const job = await response.json();
+                showNotification(`Scraping started! Job #${job.id}`, 'success');
+
+                // Switch to jobs tab
+                setTimeout(() => {
+                    document.querySelectorAll('.tab')[1].click();
+                }, 1000);
+
+            } catch (error) {
+                showNotification('Error starting scrape: ' + error.message, 'error');
+            }
+        });
+
+        // Export
+        document.getElementById('export-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const filters = {};
+            if (document.getElementById('filter-phone').checked) filters.has_phone = true;
+            if (document.getElementById('filter-website').checked) filters.has_website = true;
+            if (document.getElementById('filter-email').checked) filters.has_email = true;
+
+            const data = {
+                format: document.getElementById('export-format').value,
+                filters: filters
+            };
+
+            try {
+                const response = await fetch(`${API_URL}/export`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+                showNotification(`Export successful: ${result.filepath}`, 'success');
+
+            } catch (error) {
+                showNotification('Export failed: ' + error.message, 'error');
+            }
+        });
+
+        // WebSocket
+        function connectWebSocket() {
+            ws = new WebSocket('ws://localhost:8000/ws');
+
+            ws.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+
+                if (message.type === 'job_completed') {
+                    showNotification(`Job #${message.job_id} completed with ${message.results_count} results!`, 'success');
+                    loadStats();
+                    loadJobs();
+                }
+            };
+
+            ws.onerror = () => console.log('WebSocket error');
+            ws.onclose = () => setTimeout(connectWebSocket, 5000);
+        }
+
+        // Helpers
+        function getStatusColor(status) {
+            const colors = {
+                completed: 'success',
+                running: 'info',
+                failed: 'error',
+                pending: 'warning'
+            };
+            return colors[status] || 'info';
+        }
+
+        function getQualityColor(score) {
+            if (score >= 80) return 'success';
+            if (score >= 50) return 'warning';
+            return 'error';
+        }
+
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = 'notification';
+            notification.textContent = message;
+            document.body.appendChild(notification);
+
+            setTimeout(() => notification.remove(), 5000);
+        }
+    </script>
+</body>
+</html>
