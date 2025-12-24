@@ -634,11 +634,239 @@ function refreshData() {
     showNotification('Data refreshed', 'success');
 }
 
-function applyFilters() {
-    if (leadsDataTable) {
-        const search = document.getElementById('filterSearch').value;
-        leadsDataTable.search(search).draw();
+// Advanced Filter Functions
+function applyAdvancedFilters() {
+    showLoading(true);
+
+    // Build query parameters from all filter fields
+    const params = new URLSearchParams();
+
+    // General search
+    const generalSearch = document.getElementById('filterGeneralSearch').value;
+    if (generalSearch) params.append('search', generalSearch);
+
+    // Location filters
+    const city = document.getElementById('filterCity').value;
+    const state = document.getElementById('filterState').value;
+    const pinCode = document.getElementById('filterPinCode').value;
+    if (city) params.append('city', city);
+    if (state) params.append('state', state);
+    if (pinCode) params.append('pin_code', pinCode);
+
+    // Contact filters
+    if (document.getElementById('filterHasPhone').checked) params.append('has_phone', 'true');
+    if (document.getElementById('filterHasEmail').checked) params.append('has_email', 'true');
+    if (document.getElementById('filterHasWebsite').checked) params.append('has_website', 'true');
+
+    // Category filters
+    const category = document.getElementById('filterCategory').value;
+    const searchQuery = document.getElementById('filterSearchQuery').value;
+    if (category) params.append('category', category);
+    if (searchQuery) params.append('search_query', searchQuery);
+
+    // Quality & Rating filters
+    const minQuality = document.getElementById('filterMinQuality').value;
+    const maxQuality = document.getElementById('filterMaxQuality').value;
+    const minRating = document.getElementById('filterMinRating').value;
+    const maxRating = document.getElementById('filterMaxRating').value;
+    const minReviews = document.getElementById('filterMinReviews').value;
+    const priceLevel = document.getElementById('filterPriceLevel').value;
+
+    if (minQuality) params.append('min_quality', minQuality);
+    if (maxQuality) params.append('max_quality', maxQuality);
+    if (minRating) params.append('min_rating', minRating);
+    if (maxRating) params.append('max_rating', maxRating);
+    if (minReviews) params.append('min_reviews', minReviews);
+    if (priceLevel) params.append('price_level', priceLevel);
+
+    // Social media filters
+    if (document.getElementById('filterHasFacebook').checked) params.append('has_facebook', 'true');
+    if (document.getElementById('filterHasInstagram').checked) params.append('has_instagram', 'true');
+    if (document.getElementById('filterHasTwitter').checked) params.append('has_twitter', 'true');
+    if (document.getElementById('filterHasLinkedIn').checked) params.append('has_linkedin', 'true');
+
+    // Fetch filtered leads
+    fetch(`${API_URL}/leads?${params.toString()}`)
+        .then(response => response.json())
+        .then(leads => {
+            // Update table
+            const tbody = document.getElementById('leadsBody');
+            tbody.innerHTML = leads.map((lead, index) => `
+                <tr>
+                    <td><input type="checkbox" class="lead-select" data-id="${lead.id}"></td>
+                    <td><strong>${lead.business_name}</strong></td>
+                    <td>${lead.category || '-'}</td>
+                    <td>${lead.city || '-'}</td>
+                    <td>${lead.phone ? `<a href="tel:${lead.phone}">${lead.phone}</a>` : '-'}</td>
+                    <td>${lead.email || '-'}</td>
+                    <td>${lead.website ? `<a href="${lead.website}" target="_blank"><i class="fas fa-external-link-alt"></i></a>` : '-'}</td>
+                    <td>${lead.rating ? lead.rating + ' ★' : '-'}</td>
+                    <td>${getQualityBadge(lead.data_quality_score)}</td>
+                    <td>
+                        <button class="action-btn" onclick="viewLeadDetails(${lead.id})" title="View Details">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                        <button class="action-btn" onclick="deleteLead(${lead.id})" title="Delete">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+
+            // Reinitialize DataTable
+            if (leadsDataTable) {
+                leadsDataTable.destroy();
+            }
+            leadsDataTable = new DataTable('#leadsTable', {
+                order: [[8, 'desc']], // Sort by quality
+                pageLength: 50
+            });
+
+            // Show filter summary
+            updateFilterSummary(params);
+            showNotification(`Found ${leads.length} leads matching your filters`, 'success');
+            showLoading(false);
+        })
+        .catch(error => {
+            console.error('Error applying filters:', error);
+            showNotification('Failed to apply filters', 'error');
+            showLoading(false);
+        });
+}
+
+function clearFilters() {
+    // Clear all filter inputs
+    document.getElementById('filterGeneralSearch').value = '';
+    document.getElementById('filterCity').value = '';
+    document.getElementById('filterState').value = '';
+    document.getElementById('filterPinCode').value = '';
+    document.getElementById('filterCategory').value = '';
+    document.getElementById('filterSearchQuery').value = '';
+    document.getElementById('filterMinQuality').value = '';
+    document.getElementById('filterMaxQuality').value = '';
+    document.getElementById('filterMinRating').value = '';
+    document.getElementById('filterMaxRating').value = '';
+    document.getElementById('filterMinReviews').value = '';
+    document.getElementById('filterPriceLevel').value = '';
+
+    // Clear checkboxes
+    document.getElementById('filterHasPhone').checked = false;
+    document.getElementById('filterHasEmail').checked = false;
+    document.getElementById('filterHasWebsite').checked = false;
+    document.getElementById('filterHasFacebook').checked = false;
+    document.getElementById('filterHasInstagram').checked = false;
+    document.getElementById('filterHasTwitter').checked = false;
+    document.getElementById('filterHasLinkedIn').checked = false;
+
+    // Hide filter summary
+    document.getElementById('filterSummary').style.display = 'none';
+
+    // Reload all leads
+    loadLeads();
+    showNotification('Filters cleared', 'success');
+}
+
+function updateFilterSummary(params) {
+    const summary = document.getElementById('filterSummary');
+    const tagsContainer = document.getElementById('filterTags');
+
+    if (params.toString()) {
+        const tags = [];
+
+        // Build filter tags
+        for (const [key, value] of params.entries()) {
+            let label = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            let displayValue = value === 'true' ? '✓' : value;
+            tags.push(`
+                <span class="badge badge-info" style="cursor: pointer;" onclick="removeFilter('${key}')">
+                    ${label}: ${displayValue}
+                    <i class="fas fa-times" style="margin-left: 0.25rem;"></i>
+                </span>
+            `);
+        }
+
+        tagsContainer.innerHTML = tags.join('');
+        summary.style.display = 'block';
+    } else {
+        summary.style.display = 'none';
     }
+}
+
+function removeFilter(filterKey) {
+    // Map filter key to input element
+    const filterMap = {
+        'search': 'filterGeneralSearch',
+        'city': 'filterCity',
+        'state': 'filterState',
+        'pin_code': 'filterPinCode',
+        'category': 'filterCategory',
+        'search_query': 'filterSearchQuery',
+        'min_quality': 'filterMinQuality',
+        'max_quality': 'filterMaxQuality',
+        'min_rating': 'filterMinRating',
+        'max_rating': 'filterMaxRating',
+        'min_reviews': 'filterMinReviews',
+        'price_level': 'filterPriceLevel',
+        'has_phone': 'filterHasPhone',
+        'has_email': 'filterHasEmail',
+        'has_website': 'filterHasWebsite',
+        'has_facebook': 'filterHasFacebook',
+        'has_instagram': 'filterHasInstagram',
+        'has_twitter': 'filterHasTwitter',
+        'has_linkedin': 'filterHasLinkedIn'
+    };
+
+    const elementId = filterMap[filterKey];
+    if (elementId) {
+        const element = document.getElementById(elementId);
+        if (element.type === 'checkbox') {
+            element.checked = false;
+        } else {
+            element.value = '';
+        }
+    }
+
+    // Reapply filters
+    applyAdvancedFilters();
+}
+
+function saveFilterPreset() {
+    const presetName = prompt('Enter a name for this filter preset:');
+    if (!presetName) return;
+
+    const preset = {
+        generalSearch: document.getElementById('filterGeneralSearch').value,
+        city: document.getElementById('filterCity').value,
+        state: document.getElementById('filterState').value,
+        pinCode: document.getElementById('filterPinCode').value,
+        category: document.getElementById('filterCategory').value,
+        searchQuery: document.getElementById('filterSearchQuery').value,
+        minQuality: document.getElementById('filterMinQuality').value,
+        maxQuality: document.getElementById('filterMaxQuality').value,
+        minRating: document.getElementById('filterMinRating').value,
+        maxRating: document.getElementById('filterMaxRating').value,
+        minReviews: document.getElementById('filterMinReviews').value,
+        priceLevel: document.getElementById('filterPriceLevel').value,
+        hasPhone: document.getElementById('filterHasPhone').checked,
+        hasEmail: document.getElementById('filterHasEmail').checked,
+        hasWebsite: document.getElementById('filterHasWebsite').checked,
+        hasFacebook: document.getElementById('filterHasFacebook').checked,
+        hasInstagram: document.getElementById('filterHasInstagram').checked,
+        hasTwitter: document.getElementById('filterHasTwitter').checked,
+        hasLinkedIn: document.getElementById('filterHasLinkedIn').checked
+    };
+
+    // Save to localStorage
+    const presets = JSON.parse(localStorage.getItem('filterPresets') || '{}');
+    presets[presetName] = preset;
+    localStorage.setItem('filterPresets', JSON.stringify(presets));
+
+    showNotification(`Filter preset "${presetName}" saved!`, 'success');
+}
+
+// Legacy function for backward compatibility
+function applyFilters() {
+    applyAdvancedFilters();
 }
 
 // View lead details (to be implemented)

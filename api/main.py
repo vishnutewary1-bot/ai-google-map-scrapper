@@ -341,33 +341,97 @@ async def start_scrape(request: ScrapeRequest, background_tasks: BackgroundTasks
 
 @app.get("/api/leads", response_model=List[LeadResponse])
 async def get_leads(
-    limit: int = 50,
+    limit: int = 1000,
     offset: int = 0,
+    # Location filters
     city: Optional[str] = None,
     state: Optional[str] = None,
+    pin_code: Optional[str] = None,
+    # Contact filters
     has_phone: bool = False,
     has_website: bool = False,
     has_email: bool = False,
-    min_quality: int = 0
+    # Category filters
+    category: Optional[str] = None,
+    search_query: Optional[str] = None,
+    # Quality filters
+    min_quality: int = 0,
+    max_quality: int = 100,
+    min_rating: Optional[float] = None,
+    max_rating: Optional[float] = None,
+    min_reviews: Optional[int] = None,
+    # Social media filters
+    has_facebook: bool = False,
+    has_instagram: bool = False,
+    has_twitter: bool = False,
+    has_linkedin: bool = False,
+    # Price level
+    price_level: Optional[str] = None,
+    # General search
+    search: Optional[str] = None
 ):
-    """Get list of leads with filters."""
+    """Get list of leads with comprehensive filters."""
     try:
         with db_manager.get_session() as session:
             query = session.query(BusinessLead).order_by(BusinessLead.scraped_at.desc())
 
-            # Apply filters
+            # Location filters
             if city:
-                query = query.filter(BusinessLead.city == city)
+                query = query.filter(BusinessLead.city.ilike(f"%{city}%"))
             if state:
-                query = query.filter(BusinessLead.state == state)
+                query = query.filter(BusinessLead.state.ilike(f"%{state}%"))
+            if pin_code:
+                query = query.filter(BusinessLead.pin_code == pin_code)
+
+            # Contact filters
             if has_phone:
                 query = query.filter(BusinessLead.phone.isnot(None))
             if has_website:
                 query = query.filter(BusinessLead.website.isnot(None))
             if has_email:
                 query = query.filter(BusinessLead.email.isnot(None))
+
+            # Category filters
+            if category:
+                query = query.filter(BusinessLead.category.ilike(f"%{category}%"))
+            if search_query:
+                query = query.filter(BusinessLead.search_query.ilike(f"%{search_query}%"))
+
+            # Quality filters
             if min_quality > 0:
                 query = query.filter(BusinessLead.data_quality_score >= min_quality)
+            if max_quality < 100:
+                query = query.filter(BusinessLead.data_quality_score <= max_quality)
+            if min_rating:
+                query = query.filter(BusinessLead.rating >= min_rating)
+            if max_rating:
+                query = query.filter(BusinessLead.rating <= max_rating)
+            if min_reviews:
+                query = query.filter(BusinessLead.review_count >= min_reviews)
+
+            # Social media filters
+            if has_facebook:
+                query = query.filter(BusinessLead.social_facebook.isnot(None))
+            if has_instagram:
+                query = query.filter(BusinessLead.social_instagram.isnot(None))
+            if has_twitter:
+                query = query.filter(BusinessLead.social_twitter.isnot(None))
+            if has_linkedin:
+                query = query.filter(BusinessLead.social_linkedin.isnot(None))
+
+            # Price level
+            if price_level:
+                query = query.filter(BusinessLead.price_level == price_level)
+
+            # General search (searches across multiple fields)
+            if search:
+                search_filter = f"%{search}%"
+                query = query.filter(
+                    (BusinessLead.business_name.ilike(search_filter)) |
+                    (BusinessLead.city.ilike(search_filter)) |
+                    (BusinessLead.category.ilike(search_filter)) |
+                    (BusinessLead.full_address.ilike(search_filter))
+                )
 
             leads = query.limit(limit).offset(offset).all()
 

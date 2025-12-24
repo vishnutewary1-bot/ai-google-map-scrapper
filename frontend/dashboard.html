@@ -900,30 +900,163 @@
                         </div>
                     </div>
 
-                    <!-- Filters -->
-                    <div class="filters">
-                        <div class="filter-row">
-                            <div class="form-group" style="margin-bottom: 0;">
-                                <input type="text" class="form-control" id="filterSearch"
-                                    placeholder="Search by name, city, category...">
-                            </div>
-                            <div class="form-group" style="margin-bottom: 0;">
-                                <select class="form-control" id="filterPhone">
-                                    <option value="">All Phone Status</option>
-                                    <option value="yes">With Phone</option>
-                                    <option value="no">Without Phone</option>
-                                </select>
-                            </div>
-                            <div class="form-group" style="margin-bottom: 0;">
-                                <select class="form-control" id="filterEmail">
-                                    <option value="">All Email Status</option>
-                                    <option value="yes">With Email</option>
-                                    <option value="no">Without Email</option>
-                                </select>
-                            </div>
-                            <button class="btn btn-primary" onclick="applyFilters()">
-                                <i class="fas fa-filter"></i> Apply
+                    <!-- Advanced Filters -->
+                    <div class="card" style="background: #f8fafc; margin-bottom: 1rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                            <h4 style="margin: 0; color: var(--dark);">
+                                <i class="fas fa-filter"></i> Advanced Filters
+                            </h4>
+                            <button class="btn btn-sm btn-secondary" onclick="clearFilters()">
+                                <i class="fas fa-times"></i> Clear All
                             </button>
+                        </div>
+
+                        <!-- General Search -->
+                        <div class="form-group">
+                            <label class="form-label">
+                                <i class="fas fa-search"></i> Search Across All Fields
+                            </label>
+                            <input type="text" class="form-control" id="filterGeneralSearch"
+                                placeholder="Search by business name, address, city, category...">
+                        </div>
+
+                        <!-- Location Filters -->
+                        <div style="border-top: 1px solid var(--border); padding-top: 1rem; margin-top: 1rem;">
+                            <h5 style="margin-bottom: 1rem; color: var(--dark);">
+                                <i class="fas fa-map-marker-alt"></i> Location
+                            </h5>
+                            <div class="form-grid">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label class="form-label">City</label>
+                                    <input type="text" class="form-control" id="filterCity" placeholder="e.g., Mumbai">
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label class="form-label">State</label>
+                                    <input type="text" class="form-control" id="filterState" placeholder="e.g., Maharashtra">
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label class="form-label">PIN Code</label>
+                                    <input type="text" class="form-control" id="filterPinCode" placeholder="e.g., 400001">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Contact Filters -->
+                        <div style="border-top: 1px solid var(--border); padding-top: 1rem; margin-top: 1rem;">
+                            <h5 style="margin-bottom: 1rem; color: var(--dark);">
+                                <i class="fas fa-address-book"></i> Contact Information
+                            </h5>
+                            <div class="filter-row" style="gap: 2rem;">
+                                <div class="form-check">
+                                    <input type="checkbox" id="filterHasPhone">
+                                    <label><i class="fas fa-phone"></i> Has Phone Number</label>
+                                </div>
+                                <div class="form-check">
+                                    <input type="checkbox" id="filterHasEmail">
+                                    <label><i class="fas fa-envelope"></i> Has Email</label>
+                                </div>
+                                <div class="form-check">
+                                    <input type="checkbox" id="filterHasWebsite">
+                                    <label><i class="fas fa-globe"></i> Has Website</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Category Filters -->
+                        <div style="border-top: 1px solid var(--border); padding-top: 1rem; margin-top: 1rem;">
+                            <h5 style="margin-bottom: 1rem; color: var(--dark);">
+                                <i class="fas fa-tags"></i> Category
+                            </h5>
+                            <div class="form-grid">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label class="form-label">Business Category</label>
+                                    <input type="text" class="form-control" id="filterCategory" placeholder="e.g., Restaurant, Hotel">
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label class="form-label">Search Query Used</label>
+                                    <input type="text" class="form-control" id="filterSearchQuery" placeholder="Original search query">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Quality & Rating Filters -->
+                        <div style="border-top: 1px solid var(--border); padding-top: 1rem; margin-top: 1rem;">
+                            <h5 style="margin-bottom: 1rem; color: var(--dark);">
+                                <i class="fas fa-star"></i> Quality & Ratings
+                            </h5>
+                            <div class="form-grid">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label class="form-label">Min Quality Score (%)</label>
+                                    <input type="number" class="form-control" id="filterMinQuality" min="0" max="100" placeholder="0-100">
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label class="form-label">Max Quality Score (%)</label>
+                                    <input type="number" class="form-control" id="filterMaxQuality" min="0" max="100" placeholder="0-100">
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label class="form-label">Min Rating</label>
+                                    <input type="number" class="form-control" id="filterMinRating" min="0" max="5" step="0.1" placeholder="1.0-5.0">
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label class="form-label">Max Rating</label>
+                                    <input type="number" class="form-control" id="filterMaxRating" min="0" max="5" step="0.1" placeholder="1.0-5.0">
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label class="form-label">Min Review Count</label>
+                                    <input type="number" class="form-control" id="filterMinReviews" min="0" placeholder="Minimum reviews">
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label class="form-label">Price Level</label>
+                                    <select class="form-control" id="filterPriceLevel">
+                                        <option value="">All Prices</option>
+                                        <option value="$">$ (Budget)</option>
+                                        <option value="$$">$$ (Moderate)</option>
+                                        <option value="$$$">$$$ (Expensive)</option>
+                                        <option value="$$$$">$$$$ (Luxury)</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Social Media Filters -->
+                        <div style="border-top: 1px solid var(--border); padding-top: 1rem; margin-top: 1rem;">
+                            <h5 style="margin-bottom: 1rem; color: var(--dark);">
+                                <i class="fas fa-share-alt"></i> Social Media Presence
+                            </h5>
+                            <div class="filter-row" style="gap: 2rem;">
+                                <div class="form-check">
+                                    <input type="checkbox" id="filterHasFacebook">
+                                    <label><i class="fab fa-facebook"></i> Facebook</label>
+                                </div>
+                                <div class="form-check">
+                                    <input type="checkbox" id="filterHasInstagram">
+                                    <label><i class="fab fa-instagram"></i> Instagram</label>
+                                </div>
+                                <div class="form-check">
+                                    <input type="checkbox" id="filterHasTwitter">
+                                    <label><i class="fab fa-twitter"></i> Twitter</label>
+                                </div>
+                                <div class="form-check">
+                                    <input type="checkbox" id="filterHasLinkedIn">
+                                    <label><i class="fab fa-linkedin"></i> LinkedIn</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div style="border-top: 1px solid var(--border); padding-top: 1rem; margin-top: 1rem; display: flex; gap: 1rem;">
+                            <button class="btn btn-primary" onclick="applyAdvancedFilters()" style="flex: 1;">
+                                <i class="fas fa-search"></i> Apply Filters
+                            </button>
+                            <button class="btn btn-outline" onclick="saveFilterPreset()" style="flex: 0;">
+                                <i class="fas fa-save"></i> Save Preset
+                            </button>
+                        </div>
+
+                        <!-- Filter Summary -->
+                        <div id="filterSummary" style="margin-top: 1rem; padding: 0.75rem; background: white; border-radius: 6px; display: none;">
+                            <strong>Active Filters:</strong>
+                            <div id="filterTags" style="margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.5rem;"></div>
                         </div>
                     </div>
 
