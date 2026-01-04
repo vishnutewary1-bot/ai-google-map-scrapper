@@ -25,7 +25,12 @@ wheels/
 
 # Environment
 .env
+.env.local
+.env.production
 .venv
+
+# Credentials (keep safe!)
+config/google_credentials.json
 
 # IDE
 .vscode/
@@ -41,8 +46,9 @@ logs/
 # Exports
 exports/
 *.csv
-*.json
 *.xlsx
+!vercel.json
+!package.json
 
 # Database
 *.db

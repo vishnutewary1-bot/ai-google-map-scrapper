@@ -591,6 +591,41 @@
             color: var(--primary);
         }
 
+        .action-btn-danger:hover {
+            background: #fee2e2;
+            color: var(--danger);
+        }
+
+        /* Health Items */
+        .health-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .health-item:last-child {
+            border-bottom: none;
+        }
+
+        .health-item .label {
+            font-weight: 500;
+            color: #64748b;
+        }
+
+        .health-item .value {
+            font-weight: 600;
+            color: var(--dark);
+        }
+
+        .text-success {
+            color: var(--success) !important;
+        }
+
+        .text-danger {
+            color: var(--danger) !important;
+        }
+
         /* Filters */
         .filters {
             background: var(--light);
@@ -643,35 +678,35 @@
             <p>Google Maps Lead Scraper</p>
         </div>
         <nav class="nav-menu">
-            <div class="nav-item active" onclick="showPage('dashboard')">
+            <div class="nav-item active" onclick="showPage('dashboard', event)">
                 <i class="fas fa-th-large"></i>
                 <span>Dashboard</span>
             </div>
-            <div class="nav-item" onclick="showPage('scraper')">
+            <div class="nav-item" onclick="showPage('scraper', event)">
                 <i class="fas fa-rocket"></i>
                 <span>New Scrape Job</span>
             </div>
-            <div class="nav-item" onclick="showPage('jobs')">
+            <div class="nav-item" onclick="showPage('jobs', event)">
                 <i class="fas fa-tasks"></i>
                 <span>Jobs Management</span>
             </div>
-            <div class="nav-item" onclick="showPage('leads')">
+            <div class="nav-item" onclick="showPage('leads', event)">
                 <i class="fas fa-database"></i>
                 <span>Leads Database</span>
             </div>
-            <div class="nav-item" onclick="showPage('bulk')">
+            <div class="nav-item" onclick="showPage('bulk', event)">
                 <i class="fas fa-layer-group"></i>
                 <span>Bulk Scraping</span>
             </div>
-            <div class="nav-item" onclick="showPage('export')">
+            <div class="nav-item" onclick="showPage('export', event)">
                 <i class="fas fa-file-export"></i>
                 <span>Export Data</span>
             </div>
-            <div class="nav-item" onclick="showPage('analytics')">
+            <div class="nav-item" onclick="showPage('analytics', event)">
                 <i class="fas fa-chart-line"></i>
                 <span>Analytics</span>
             </div>
-            <div class="nav-item" onclick="showPage('settings')">
+            <div class="nav-item" onclick="showPage('settings', event)">
                 <i class="fas fa-cog"></i>
                 <span>Settings</span>
             </div>
@@ -768,7 +803,7 @@
                 <div class="card">
                     <div class="card-header">
                         <h3 class="card-title">Recent Jobs</h3>
-                        <button class="btn btn-sm btn-primary" onclick="showPage('jobs')">
+                        <button class="btn btn-sm btn-primary" onclick="showPage('jobs', event)">
                             View All <i class="fas fa-arrow-right"></i>
                         </button>
                     </div>
@@ -1285,10 +1320,19 @@
                         </tr>
                     </table>
                 </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">System Health</h3>
+                    </div>
+                    <div id="systemHealth" style="padding: 1rem;">
+                        <p style="color: #64748b;">Loading system health data...</p>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
-    <script src="app.js"></script>
+    <script src="/static/app.js"></script>
 </body>
 </html>

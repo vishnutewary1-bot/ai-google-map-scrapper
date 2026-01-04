@@ -1,30 +1,45 @@
-"""Browser management for Playwright automation."""
-from playwright.async_api import async_playwright, Browser, BrowserContext, Page
+"""Browser management for Playwright automation - Windows compatible version."""
+from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page
 from typing import Optional
 import random
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from loguru import logger
 from config.settings import settings
 
+# Thread pool for running sync Playwright in async context
+_executor = ThreadPoolExecutor(max_workers=3)
+
 
 class BrowserManager:
-    """Manages Playwright browser instances with anti-detection features."""
+    """Manages Playwright browser instances with anti-detection features.
+
+    Uses sync Playwright API with thread pool for Windows compatibility.
+    """
 
     def __init__(self):
         self.playwright = None
         self.browser: Optional[Browser] = None
         self.context: Optional[BrowserContext] = None
+        self._initialized = False
 
-    async def initialize(self):
-        """Initialize Playwright and browser."""
+    def _init_sync(self):
+        """Initialize Playwright synchronously (runs in thread pool)."""
         try:
-            self.playwright = await async_playwright().start()
+            self.playwright = sync_playwright().start()
             logger.info("Playwright initialized successfully")
+            self._initialized = True
         except Exception as e:
             logger.error(f"Failed to initialize Playwright: {e}")
             raise
 
-    async def launch_browser(self):
-        """Launch browser with anti-detection settings."""
+    async def initialize(self):
+        """Initialize Playwright and browser (async wrapper)."""
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(_executor, self._init_sync)
+
+    def _launch_browser_sync(self):
+        """Launch browser synchronously (runs in thread pool)."""
         try:
             # Random viewport sizes (common resolutions)
             viewports = [
@@ -45,7 +60,7 @@ class BrowserManager:
             user_agent = random.choice(user_agents)
 
             # Launch browser
-            self.browser = await self.playwright.chromium.launch(
+            self.browser = self.playwright.chromium.launch(
                 headless=settings.headless_mode,
                 args=[
                     '--disable-blink-features=AutomationControlled',
@@ -58,7 +73,7 @@ class BrowserManager:
             )
 
             # Create context with randomized fingerprint
-            self.context = await self.browser.new_context(
+            self.context = self.browser.new_context(
                 viewport=viewport,
                 user_agent=user_agent,
                 locale='en-US',
@@ -68,7 +83,7 @@ class BrowserManager:
             )
 
             # Add init script to prevent detection
-            await self.context.add_init_script("""
+            self.context.add_init_script("""
                 // Override navigator.webdriver
                 Object.defineProperty(navigator, 'webdriver', {
                     get: () => undefined
@@ -95,35 +110,48 @@ class BrowserManager:
             logger.error(f"Failed to launch browser: {e}")
             raise
 
-    async def new_page(self) -> Page:
-        """Create a new page in the browser context."""
+    async def launch_browser(self):
+        """Launch browser with anti-detection settings (async wrapper)."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(_executor, self._launch_browser_sync)
+
+    def _new_page_sync(self) -> Page:
+        """Create a new page synchronously."""
         if not self.context:
-            await self.launch_browser()
+            self._launch_browser_sync()
 
-        page = await self.context.new_page()
-
-        # Set default timeout
+        page = self.context.new_page()
         page.set_default_timeout(settings.browser_timeout)
-
         return page
 
-    async def close(self):
-        """Close browser and cleanup resources."""
+    async def new_page(self) -> Page:
+        """Create a new page in the browser context (async wrapper)."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(_executor, self._new_page_sync)
+
+    def _close_sync(self):
+        """Close browser synchronously."""
         try:
             if self.context:
-                await self.context.close()
+                self.context.close()
+                self.context = None
             if self.browser:
-                await self.browser.close()
+                self.browser.close()
+                self.browser = None
             if self.playwright:
-                await self.playwright.stop()
+                self.playwright.stop()
+                self.playwright = None
             logger.info("Browser closed successfully")
         except Exception as e:
             logger.error(f"Error closing browser: {e}")
 
+    async def close(self):
+        """Close browser and cleanup resources (async wrapper)."""
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(_executor, self._close_sync)
+
     async def random_delay(self, min_seconds: Optional[int] = None, max_seconds: Optional[int] = None):
         """Add random delay to mimic human behavior."""
-        import asyncio
-
         min_sec = min_seconds or settings.delay_between_requests_min
         max_sec = max_seconds or settings.delay_between_requests_max
         delay = random.uniform(min_sec, max_sec)
@@ -131,49 +159,50 @@ class BrowserManager:
         logger.debug(f"Waiting {delay:.2f} seconds...")
         await asyncio.sleep(delay)
 
-    async def human_like_scroll(self, page: Page):
-        """Scroll the page in a human-like manner."""
+    def _human_scroll_sync(self, page: Page):
+        """Scroll the page synchronously."""
         try:
-            # Random scroll distance
             scroll_distance = random.randint(300, 800)
-
-            # Scroll with random speed
-            await page.evaluate(f"""
+            page.evaluate(f"""
                 window.scrollBy({{
                     top: {scroll_distance},
                     left: 0,
                     behavior: 'smooth'
                 }});
             """)
-
-            # Small random delay after scroll
-            import asyncio
-            await asyncio.sleep(random.uniform(0.5, 1.5))
-
+            import time
+            time.sleep(random.uniform(0.5, 1.5))
         except Exception as e:
             logger.debug(f"Scroll error (non-critical): {e}")
 
-    async def human_like_click(self, page: Page, selector: str, timeout: int = 30000):
-        """Click element with human-like behavior."""
-        try:
-            element = await page.wait_for_selector(selector, timeout=timeout)
+    async def human_like_scroll(self, page: Page):
+        """Scroll the page in a human-like manner (async wrapper)."""
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(_executor, self._human_scroll_sync, page)
 
-            # Get element bounding box
-            box = await element.bounding_box()
+    def _human_click_sync(self, page: Page, selector: str, timeout: int = 30000):
+        """Click element synchronously."""
+        try:
+            element = page.wait_for_selector(selector, timeout=timeout)
+
+            box = element.bounding_box()
 
             if box:
-                # Random offset within element
                 x = box['x'] + random.uniform(5, box['width'] - 5)
                 y = box['y'] + random.uniform(5, box['height'] - 5)
 
-                # Move mouse and click
-                await page.mouse.move(x, y)
-                import asyncio
-                await asyncio.sleep(random.uniform(0.1, 0.3))
-                await page.mouse.click(x, y)
+                page.mouse.move(x, y)
+                import time
+                time.sleep(random.uniform(0.1, 0.3))
+                page.mouse.click(x, y)
             else:
-                await element.click()
+                element.click()
 
         except Exception as e:
             logger.debug(f"Click error: {e}")
             raise
+
+    async def human_like_click(self, page: Page, selector: str, timeout: int = 30000):
+        """Click element with human-like behavior (async wrapper)."""
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(_executor, self._human_click_sync, page, selector, timeout)

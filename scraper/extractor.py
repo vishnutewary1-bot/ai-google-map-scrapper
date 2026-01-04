@@ -1,5 +1,5 @@
 """Data extraction logic for Google Maps listings."""
-from playwright.async_api import Page
+from playwright.sync_api import Page as SyncPage
 from typing import Dict, Optional, List
 import re
 from loguru import logger
@@ -10,8 +10,8 @@ class DataExtractor:
     """Extracts business data from Google Maps pages."""
 
     @staticmethod
-    async def extract_business_data(page: Page, search_query: str) -> Optional[Dict]:
-        """Extract all available business data from a Google Maps listing page."""
+    def extract_business_data_sync(page: SyncPage, search_query: str) -> Optional[Dict]:
+        """Extract all available business data from a Google Maps listing page (sync version)."""
         try:
             data = {
                 'search_query': search_query,
@@ -19,35 +19,39 @@ class DataExtractor:
             }
 
             # Extract business name
-            data['business_name'] = await DataExtractor._extract_business_name(page)
+            data['business_name'] = DataExtractor._extract_business_name_sync(page)
             if not data['business_name']:
                 logger.warning("Could not extract business name, skipping")
                 return None
 
             # Extract address components
-            address_data = await DataExtractor._extract_address(page)
+            address_data = DataExtractor._extract_address_sync(page)
             data.update(address_data)
 
             # Extract phone number
-            data['phone'] = await DataExtractor._extract_phone(page)
+            data['phone'] = DataExtractor._extract_phone_sync(page)
 
             # Extract website
-            data['website'] = await DataExtractor._extract_website(page)
+            data['website'] = DataExtractor._extract_website_sync(page)
 
             # Extract category
-            data['category'] = await DataExtractor._extract_category(page)
+            data['category'] = DataExtractor._extract_category_sync(page)
 
             # Extract rating and reviews
-            rating_data = await DataExtractor._extract_rating_reviews(page)
+            rating_data = DataExtractor._extract_rating_reviews_sync(page)
             data.update(rating_data)
 
             # Extract Google Maps URL and Place ID
             data['maps_url'] = page.url
-            data['place_id'] = await DataExtractor._extract_place_id(page)
+            data['place_id'] = DataExtractor._extract_place_id_sync(page)
 
             # Extract coordinates from URL
-            coords = await DataExtractor._extract_coordinates(page)
+            coords = DataExtractor._extract_coordinates_sync(page)
             data.update(coords)
+
+            # Extract business hours
+            hours_data = DataExtractor._extract_business_hours_sync(page)
+            data.update(hours_data)
 
             # Calculate data quality score
             data['data_quality_score'] = DataExtractor._calculate_quality_score(data)
@@ -60,10 +64,10 @@ class DataExtractor:
             return None
 
     @staticmethod
-    async def _extract_business_name(page: Page) -> Optional[str]:
+    def _extract_business_name_sync(page: SyncPage) -> Optional[str]:
         """Extract business name from the page."""
         selectors = [
-            'h1.DUwDvf',  # Main heading
+            'h1.DUwDvf',
             'h1[class*="fontHeadline"]',
             'h1.tAiQdd',
             'div[role="main"] h1',
@@ -71,9 +75,9 @@ class DataExtractor:
 
         for selector in selectors:
             try:
-                element = await page.query_selector(selector)
+                element = page.query_selector(selector)
                 if element:
-                    name = await element.inner_text()
+                    name = element.inner_text()
                     if name and name.strip():
                         return name.strip()
             except:
@@ -82,7 +86,7 @@ class DataExtractor:
         return None
 
     @staticmethod
-    async def _extract_address(page: Page) -> Dict:
+    def _extract_address_sync(page: SyncPage) -> Dict:
         """Extract full address and parse components."""
         address_data = {
             'full_address': None,
@@ -99,24 +103,21 @@ class DataExtractor:
 
         for selector in selectors:
             try:
-                element = await page.query_selector(selector)
+                element = page.query_selector(selector)
                 if element:
-                    # Try aria-label first
-                    aria_label = await element.get_attribute('aria-label')
+                    aria_label = element.get_attribute('aria-label')
                     if aria_label and 'Address:' in aria_label:
                         address = aria_label.replace('Address:', '').strip()
                         address_data['full_address'] = address
                         break
 
-                    # Try inner text
-                    text = await element.inner_text()
+                    text = element.inner_text()
                     if text and text.strip():
                         address_data['full_address'] = text.strip()
                         break
             except:
                 continue
 
-        # Parse address components if we have an address
         if address_data['full_address']:
             address_data.update(DataExtractor._parse_address_components(address_data['full_address']))
 
@@ -136,7 +137,7 @@ class DataExtractor:
         if pin_match:
             components['pin_code'] = pin_match.group(1)
 
-        # Common Indian states (abbreviated and full names)
+        # Common Indian states
         states = [
             'Maharashtra', 'Delhi', 'Karnataka', 'Tamil Nadu', 'Gujarat', 'Rajasthan',
             'Uttar Pradesh', 'West Bengal', 'Madhya Pradesh', 'Kerala', 'Telangana',
@@ -149,18 +150,14 @@ class DataExtractor:
                 components['state'] = state
                 break
 
-        # Try to extract city (usually before state or pin code)
-        # This is a simple heuristic and may need improvement
         parts = address.split(',')
         for i, part in enumerate(parts):
             part = part.strip()
             if components['state'] and components['state'] in part:
-                # City is likely in the previous part
                 if i > 0:
                     components['city'] = parts[i - 1].strip()
                 break
             elif components['pin_code'] and components['pin_code'] in part:
-                # City might be in this or previous part
                 if i > 0:
                     components['city'] = parts[i - 1].strip()
                 break
@@ -168,7 +165,7 @@ class DataExtractor:
         return components
 
     @staticmethod
-    async def _extract_phone(page: Page) -> Optional[str]:
+    def _extract_phone_sync(page: SyncPage) -> Optional[str]:
         """Extract phone number from the page."""
         selectors = [
             'button[data-item-id*="phone"]',
@@ -178,30 +175,25 @@ class DataExtractor:
 
         for selector in selectors:
             try:
-                element = await page.query_selector(selector)
+                element = page.query_selector(selector)
                 if element:
-                    # Try aria-label
-                    aria_label = await element.get_attribute('aria-label')
+                    aria_label = element.get_attribute('aria-label')
                     if aria_label:
-                        # Extract phone from aria-label
                         phone_match = re.search(r'[\d\s\-\+\(\)]+', aria_label)
                         if phone_match:
                             phone = phone_match.group().strip()
-                            # Clean up phone number
                             phone = re.sub(r'[^\d\+]', '', phone)
                             if len(phone) >= 10:
                                 return phone
 
-                    # Try href for tel: links
-                    href = await element.get_attribute('href')
+                    href = element.get_attribute('href')
                     if href and href.startswith('tel:'):
                         phone = href.replace('tel:', '').strip()
                         phone = re.sub(r'[^\d\+]', '', phone)
                         if len(phone) >= 10:
                             return phone
 
-                    # Try inner text
-                    text = await element.inner_text()
+                    text = element.inner_text()
                     if text:
                         phone_match = re.search(r'[\d\s\-\+\(\)]+', text)
                         if phone_match:
@@ -215,7 +207,7 @@ class DataExtractor:
         return None
 
     @staticmethod
-    async def _extract_website(page: Page) -> Optional[str]:
+    def _extract_website_sync(page: SyncPage) -> Optional[str]:
         """Extract website URL from the page."""
         selectors = [
             'a[data-item-id="authority"]',
@@ -225,13 +217,11 @@ class DataExtractor:
 
         for selector in selectors:
             try:
-                element = await page.query_selector(selector)
+                element = page.query_selector(selector)
                 if element:
-                    href = await element.get_attribute('href')
+                    href = element.get_attribute('href')
                     if href and (href.startswith('http://') or href.startswith('https://')):
-                        # Google Maps sometimes wraps URLs
                         if 'google.com/url?' in href:
-                            # Extract actual URL from Google redirect
                             url_match = re.search(r'[?&]q=([^&]+)', href)
                             if url_match:
                                 from urllib.parse import unquote
@@ -243,7 +233,7 @@ class DataExtractor:
         return None
 
     @staticmethod
-    async def _extract_category(page: Page) -> Optional[str]:
+    def _extract_category_sync(page: SyncPage) -> Optional[str]:
         """Extract business category from the page."""
         selectors = [
             'button[jsaction*="category"]',
@@ -253,9 +243,9 @@ class DataExtractor:
 
         for selector in selectors:
             try:
-                element = await page.query_selector(selector)
+                element = page.query_selector(selector)
                 if element:
-                    text = await element.inner_text()
+                    text = element.inner_text()
                     if text and text.strip():
                         return text.strip()
             except:
@@ -264,7 +254,7 @@ class DataExtractor:
         return None
 
     @staticmethod
-    async def _extract_rating_reviews(page: Page) -> Dict:
+    def _extract_rating_reviews_sync(page: SyncPage) -> Dict:
         """Extract rating and review count."""
         data = {
             'rating': None,
@@ -272,31 +262,29 @@ class DataExtractor:
         }
 
         try:
-            # Rating is usually in format "4.5" with stars
             rating_selectors = [
                 'div.F7nice span[aria-hidden="true"]',
                 'span.ceNzKf[aria-hidden="true"]',
             ]
 
             for selector in rating_selectors:
-                element = await page.query_selector(selector)
+                element = page.query_selector(selector)
                 if element:
-                    text = await element.inner_text()
+                    text = element.inner_text()
                     rating_match = re.search(r'(\d+\.?\d*)', text)
                     if rating_match:
                         data['rating'] = float(rating_match.group(1))
                         break
 
-            # Review count is usually in format "(123)"
             review_selectors = [
                 'div.F7nice span[aria-label*="reviews"]',
                 'button[aria-label*="reviews"]',
             ]
 
             for selector in review_selectors:
-                element = await page.query_selector(selector)
+                element = page.query_selector(selector)
                 if element:
-                    aria_label = await element.get_attribute('aria-label')
+                    aria_label = element.get_attribute('aria-label')
                     if aria_label:
                         review_match = re.search(r'(\d+)\s+review', aria_label)
                         if review_match:
@@ -309,18 +297,15 @@ class DataExtractor:
         return data
 
     @staticmethod
-    async def _extract_place_id(page: Page) -> Optional[str]:
+    def _extract_place_id_sync(page: SyncPage) -> Optional[str]:
         """Extract Google Place ID from URL or page data."""
         try:
             url = page.url
 
-            # Try to extract from URL patterns
-            # Pattern 1: /maps/place/[name]/data=...!1s[ChIJ...]
             place_id_match = re.search(r'!1s(ChIJ[a-zA-Z0-9_-]+)', url)
             if place_id_match:
                 return place_id_match.group(1)
 
-            # Pattern 2: cid parameter (CID can be converted to Place ID, but we'll store CID)
             cid_match = re.search(r'[?&]cid=(\d+)', url)
             if cid_match:
                 return f"cid:{cid_match.group(1)}"
@@ -331,7 +316,7 @@ class DataExtractor:
         return None
 
     @staticmethod
-    async def _extract_coordinates(page: Page) -> Dict:
+    def _extract_coordinates_sync(page: SyncPage) -> Dict:
         """Extract latitude and longitude from URL."""
         coords = {
             'latitude': None,
@@ -341,7 +326,6 @@ class DataExtractor:
         try:
             url = page.url
 
-            # Pattern: @latitude,longitude,zoom
             coords_match = re.search(r'@(-?\d+\.?\d*),(-?\d+\.?\d*),', url)
             if coords_match:
                 coords['latitude'] = float(coords_match.group(1))
@@ -351,6 +335,77 @@ class DataExtractor:
             logger.debug(f"Error extracting coordinates: {e}")
 
         return coords
+
+    @staticmethod
+    def _extract_business_hours_sync(page: SyncPage) -> Dict:
+        """Extract business hours for each day of the week."""
+        hours_data = {
+            'hours_monday': None,
+            'hours_tuesday': None,
+            'hours_wednesday': None,
+            'hours_thursday': None,
+            'hours_friday': None,
+            'hours_saturday': None,
+            'hours_sunday': None,
+        }
+
+        day_mapping = {
+            'monday': 'hours_monday',
+            'tuesday': 'hours_tuesday',
+            'wednesday': 'hours_wednesday',
+            'thursday': 'hours_thursday',
+            'friday': 'hours_friday',
+            'saturday': 'hours_saturday',
+            'sunday': 'hours_sunday',
+            'mon': 'hours_monday',
+            'tue': 'hours_tuesday',
+            'wed': 'hours_wednesday',
+            'thu': 'hours_thursday',
+            'fri': 'hours_friday',
+            'sat': 'hours_saturday',
+            'sun': 'hours_sunday',
+        }
+
+        try:
+            hours_button_selectors = [
+                'button[data-item-id*="oh"]',
+                'button[aria-label*="hours"]',
+                'button[aria-label*="Hours"]',
+                'div[data-item-id*="oh"]',
+            ]
+
+            for selector in hours_button_selectors:
+                try:
+                    button = page.query_selector(selector)
+                    if button:
+                        button.click()
+                        page.wait_for_timeout(500)
+                        break
+                except:
+                    continue
+
+            try:
+                rows = page.query_selector_all('table.eK4R0e tr, table.WgFkxc tr')
+                for row in rows:
+                    try:
+                        text = row.inner_text()
+                        if text:
+                            text_lower = text.lower()
+                            for day_key, field in day_mapping.items():
+                                if day_key in text_lower:
+                                    time_match = re.search(r'(\d{1,2}[:\.]?\d{0,2}\s*(?:am|pm|AM|PM)?\s*[-–]\s*\d{1,2}[:\.]?\d{0,2}\s*(?:am|pm|AM|PM)?|closed|24 hours|open 24 hours)', text, re.I)
+                                    if time_match:
+                                        hours_data[field] = time_match.group(1).strip()
+                                    break
+                    except:
+                        continue
+            except:
+                pass
+
+        except Exception as e:
+            logger.debug(f"Error extracting business hours: {e}")
+
+        return hours_data
 
     @staticmethod
     def _calculate_quality_score(data: Dict) -> int:

@@ -3,10 +3,12 @@ import asyncio
 from typing import Optional, Dict
 from datetime import datetime, timedelta
 from loguru import logger
-from playwright.async_api import BrowserContext
-import random
+from playwright.sync_api import BrowserContext
+from concurrent.futures import ThreadPoolExecutor
 
 from scraper.browser_manager import BrowserManager
+
+_executor = ThreadPoolExecutor(max_workers=1)
 
 
 class SessionManager:
@@ -28,19 +30,19 @@ class SessionManager:
         self.browser_manager = browser_manager
         await self.create_new_session()
 
-    async def create_new_session(self) -> BrowserContext:
-        """Create a new browser session with fresh fingerprint."""
+    def _create_new_session_sync(self) -> BrowserContext:
+        """Create a new browser session synchronously."""
         logger.info("Creating new browser session...")
 
         # Close old session if exists
         if self.current_session:
             try:
-                await self.current_session.close()
+                self.current_session.close()
             except Exception as e:
                 logger.debug(f"Error closing old session: {e}")
 
         # Create new context with randomized settings
-        self.current_session = await self.browser_manager.launch_browser()
+        self.current_session = self.browser_manager._launch_browser_sync()
         self.session_created_at = datetime.now()
         self.session_request_count = 0
         self.total_sessions_created += 1
@@ -48,6 +50,11 @@ class SessionManager:
         logger.info(f"New session created (total sessions: {self.total_sessions_created})")
 
         return self.current_session
+
+    async def create_new_session(self) -> BrowserContext:
+        """Create a new browser session with fresh fingerprint."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(_executor, self._create_new_session_sync)
 
     async def get_session(self) -> BrowserContext:
         """Get current session, rotating if necessary."""
@@ -81,14 +88,19 @@ class SessionManager:
         logger.info("Forcing session rotation")
         await self.create_new_session()
 
-    async def close(self):
-        """Close current session."""
+    def _close_sync(self):
+        """Close current session synchronously."""
         if self.current_session:
             try:
-                await self.current_session.close()
+                self.current_session.close()
                 logger.info("Session closed")
             except Exception as e:
                 logger.debug(f"Error closing session: {e}")
+
+    async def close(self):
+        """Close current session."""
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(_executor, self._close_sync)
 
     def get_stats(self) -> Dict:
         """Get session statistics."""

@@ -1,0 +1,22 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/vercel_app.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "api/vercel_app.py"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "api/vercel_app.py"
+    }
+  ],
+  "env": {
+    "GOOGLE_SHEETS_ENABLED": "true"
+  }
+}

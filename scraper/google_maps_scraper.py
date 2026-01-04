@@ -1,6 +1,7 @@
 """Main Google Maps scraper implementation."""
 from typing import List, Dict, Optional
 import asyncio
+from datetime import datetime
 from loguru import logger
 from playwright.async_api import Page, TimeoutError as PlaywrightTimeout
 
@@ -310,7 +311,7 @@ class GoogleMapsScraper:
                     max_results=max_results,
                     leads_target=max_results,
                     status='running',
-                    started_at=asyncio.get_event_loop().time()
+                    started_at=datetime.now()
                 )
                 session.add(job)
                 session.commit()
@@ -351,7 +352,7 @@ class GoogleMapsScraper:
                     job.leads_scraped = leads_scraped
 
                     if status == 'completed':
-                        job.completed_at = asyncio.get_event_loop().time()
+                        job.completed_at = datetime.now()
 
                     if error:
                         job.last_error = error

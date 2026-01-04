@@ -1,8 +1,11 @@
-"""Enhanced Google Maps scraper with Phase 2 features (proxy, session management, rate limiting)."""
+"""Enhanced Google Maps scraper with Windows compatibility (sync Playwright with thread pool)."""
 from typing import List, Dict, Optional
 import asyncio
+import random
+import time
+from concurrent.futures import ThreadPoolExecutor
 from loguru import logger
-from playwright.async_api import Page, TimeoutError as PlaywrightTimeout
+from playwright.sync_api import Page, TimeoutError as PlaywrightTimeout
 
 from scraper.browser_manager import BrowserManager
 from scraper.extractor import DataExtractor
@@ -10,20 +13,25 @@ from scraper.proxy_manager import ProxyManager
 from scraper.session_manager import SessionManager
 from scraper.rate_limiter import RateLimiter
 from scraper.error_handler import retry_async, error_recovery, FatalError
+from scraper.website_enricher import WebsiteEnricher
 from database import db_manager, BusinessLead, ScrapeJob
 from config.settings import settings
+
+# Thread pool for sync operations
+_executor = ThreadPoolExecutor(max_workers=2)
 
 
 class EnhancedGoogleMapsScraper:
     """
     Enhanced Google Maps scraper with:
+    - Windows compatibility (sync Playwright)
     - Proxy rotation
     - Session management
     - Advanced rate limiting
     - Error recovery
     """
 
-    def __init__(self, use_proxies: bool = False):
+    def __init__(self, use_proxies: bool = False, extract_emails: bool = False):
         self.browser_manager = BrowserManager()
         self.extractor = DataExtractor()
         self.proxy_manager = ProxyManager() if use_proxies else None
@@ -37,10 +45,13 @@ class EnhancedGoogleMapsScraper:
             base_delay_min=settings.delay_between_requests_min,
             base_delay_max=settings.delay_between_requests_max
         )
+        self.website_enricher = WebsiteEnricher() if extract_emails else None
 
         self.request_count = 0
         self.results_scraped = 0
         self.use_proxies = use_proxies
+        self.extract_emails = extract_emails
+        self.page = None
 
     async def initialize(self):
         """Initialize all components."""
@@ -57,6 +68,10 @@ class EnhancedGoogleMapsScraper:
         # Initialize session manager
         await self.session_manager.initialize(self.browser_manager)
 
+        # Log email extraction status
+        if self.extract_emails:
+            logger.info("Email extraction enabled - will enrich leads from websites")
+
         logger.success("Enhanced Google Maps Scraper initialized successfully")
 
     async def search_and_scrape(
@@ -68,15 +83,6 @@ class EnhancedGoogleMapsScraper:
     ) -> List[Dict]:
         """
         Search Google Maps and scrape business listings with enhanced features.
-
-        Args:
-            search_query: The search term
-            location: Location to search in
-            max_results: Maximum number of results
-            job_id: Optional scrape job ID for tracking
-
-        Returns:
-            List of scraped business data
         """
         try:
             # Construct search query
@@ -87,23 +93,22 @@ class EnhancedGoogleMapsScraper:
 
             logger.info(f"Starting enhanced search: '{full_query}' (max results: {max_results})")
 
-            # Create scrape job if not provided
-            if not job_id:
-                job = await self._create_scrape_job(full_query, max_results)
-                job_id = job.id
+            # Update job to running status
+            if job_id:
+                self._update_job_status_sync(job_id, 'running', 0)
 
-            # Perform search with retry
-            page = await self._get_page_with_retry()
-            await self._perform_search_with_retry(page, full_query)
+            # Get page and perform search
+            self.page = await self.browser_manager.new_page()
+            await self._perform_search(full_query)
 
             # Wait for results
             await asyncio.sleep(3)
 
-            # Scrape listings with enhanced features
-            results = await self._scrape_listings_enhanced(page, full_query, max_results, job_id)
+            # Scrape listings
+            results = await self._scrape_listings(full_query, max_results, job_id)
 
             # Update job status
-            await self._update_job_status(job_id, 'completed', len(results))
+            self._update_job_status_sync(job_id, 'completed', len(results))
 
             logger.success(f"Search completed: {len(results)} businesses scraped")
 
@@ -112,190 +117,68 @@ class EnhancedGoogleMapsScraper:
         except Exception as e:
             logger.error(f"Error during search and scrape: {e}")
             if job_id:
-                await self._update_job_status(job_id, 'failed', 0, str(e))
+                self._update_job_status_sync(job_id, 'failed', 0, str(e))
             raise
 
-    async def _get_page_with_retry(self) -> Page:
-        """Get a page from session manager with retry logic."""
-        async def get_page():
-            context = await self.session_manager.get_session()
-            return await context.new_page()
-
-        return await retry_async(get_page, max_retries=3, base_delay=5.0)
-
-    async def _perform_search_with_retry(self, page: Page, query: str):
-        """Perform search with retry logic."""
-        async def perform_search():
-            # Apply rate limiting
-            await self.rate_limiter.wait_if_needed()
-
-            # Navigate to Google Maps
+    def _perform_search_sync(self, query: str):
+        """Perform search synchronously."""
+        try:
             logger.info("Navigating to Google Maps...")
-            await page.goto('https://www.google.com/maps', wait_until='networkidle', timeout=60000)
+            self.page.goto('https://www.google.com/maps', wait_until='networkidle', timeout=60000)
 
             # Random delay
-            await asyncio.sleep(random.uniform(2, 4))
+            time.sleep(random.uniform(2, 4))
 
             # Find and fill search box
             search_box = 'input#searchboxinput'
-            await page.wait_for_selector(search_box, timeout=15000)
-            await page.fill(search_box, query)
-            await asyncio.sleep(0.5)
+            self.page.wait_for_selector(search_box, timeout=15000)
+            self.page.fill(search_box, query)
+            time.sleep(0.5)
 
             # Submit search
             search_button = 'button#searchbox-searchbutton'
             try:
-                await page.click(search_button)
+                self.page.click(search_button)
             except:
-                await page.press(search_box, 'Enter')
+                self.page.press(search_box, 'Enter')
 
             # Wait for results
-            await asyncio.sleep(3)
+            time.sleep(3)
             results_selector = 'div[role="feed"]'
-            await page.wait_for_selector(results_selector, timeout=20000)
+            self.page.wait_for_selector(results_selector, timeout=20000)
 
             logger.success("Search results loaded")
             self.rate_limiter.record_success()
 
-        import random
-        try:
-            await retry_async(perform_search, max_retries=3, base_delay=10.0)
         except Exception as e:
+            logger.error(f"Search failed: {e}")
             self.rate_limiter.record_error()
             raise
 
-    async def _scrape_listings_enhanced(
-        self,
-        page: Page,
-        search_query: str,
-        max_results: int,
-        job_id: int
-    ) -> List[Dict]:
-        """Scrape listings with enhanced error handling and rate limiting."""
-        results = []
-        scraped_urls = set()
-        consecutive_failures = 0
-        max_consecutive_failures = 5
+    async def _perform_search(self, query: str):
+        """Perform search (async wrapper)."""
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(_executor, self._perform_search_sync, query)
 
-        try:
-            # Scroll to load more results
-            await self._scroll_results_panel(page, max_results)
-
-            # Get listing links
-            listing_links = await self._get_listing_links(page)
-            logger.info(f"Found {len(listing_links)} listings")
-
-            for i, link_data in enumerate(listing_links[:max_results]):
-                try:
-                    # Check rate limiter health
-                    if not self.rate_limiter.is_healthy():
-                        logger.warning("Rate limiter unhealthy, entering recovery mode")
-                        await self.rate_limiter.enter_cooldown()
-
-                    # Skip if already scraped
-                    if link_data['url'] in scraped_urls:
-                        continue
-
-                    logger.info(f"Scraping {i + 1}/{min(len(listing_links), max_results)}: {link_data['name']}")
-
-                    # Apply rate limiting
-                    await self.rate_limiter.wait_if_needed()
-
-                    # Scrape single listing with retry
-                    business_data = await self._scrape_single_listing(
-                        page,
-                        link_data,
-                        search_query
-                    )
-
-                    if business_data:
-                        # Save to database
-                        saved = await self._save_to_database(business_data)
-                        if saved:
-                            results.append(business_data)
-                            scraped_urls.add(link_data['url'])
-                            self.results_scraped += 1
-                            consecutive_failures = 0  # Reset on success
-
-                            # Update job progress
-                            await self._update_job_progress(job_id, len(results))
-
-                        self.rate_limiter.record_success()
-                    else:
-                        consecutive_failures += 1
-
-                    # Batch delay
-                    if (i + 1) % 10 == 0:
-                        await self.rate_limiter.wait_after_batch(10)
-
-                    # Check if too many consecutive failures
-                    if consecutive_failures >= max_consecutive_failures:
-                        logger.error(f"Too many consecutive failures ({consecutive_failures}), stopping")
-                        break
-
-                except Exception as e:
-                    logger.error(f"Error scraping listing {i + 1}: {e}")
-                    self.rate_limiter.record_error(trigger_cooldown=False)
-                    consecutive_failures += 1
-
-                    # Try to recover
-                    recovered = await error_recovery.handle_error(e, {'listing': link_data})
-                    if not recovered:
-                        logger.warning("Recovery failed, continuing to next listing")
-
-                    continue
-
-        except Exception as e:
-            logger.error(f"Fatal error during listing scrape: {e}")
-            self.rate_limiter.record_error()
-
-        return results
-
-    async def _scrape_single_listing(
-        self,
-        page: Page,
-        link_data: Dict,
-        search_query: str
-    ) -> Optional[Dict]:
-        """Scrape a single listing with retry logic."""
-        async def scrape():
-            # Click listing
-            await self._click_listing(page, link_data)
-            await asyncio.sleep(2)
-
-            # Extract data
-            business_data = await self.extractor.extract_business_data(page, search_query)
-
-            if not business_data:
-                raise Exception("Failed to extract business data")
-
-            return business_data
-
-        try:
-            return await retry_async(scrape, max_retries=2, base_delay=3.0)
-        except Exception as e:
-            logger.error(f"Failed to scrape listing after retries: {e}")
-            return None
-
-    async def _scroll_results_panel(self, page: Page, target_count: int):
-        """Scroll results panel to load more listings."""
+    def _scroll_results_sync(self, target_count: int):
+        """Scroll results panel synchronously."""
         try:
             results_panel = 'div[role="feed"]'
             scroll_attempts = min(target_count // 20 + 1, 10)
 
             for i in range(scroll_attempts):
-                await page.evaluate(f'''
+                self.page.evaluate(f'''
                     const feed = document.querySelector('{results_panel}');
                     if (feed) {{
                         feed.scrollTop = feed.scrollHeight;
                     }}
                 ''')
 
-                await asyncio.sleep(2)
+                time.sleep(2)
 
                 # Check for end of results
                 try:
-                    end_message = await page.query_selector('span:has-text("You\'ve reached the end")')
+                    end_message = self.page.query_selector('span:has-text("You\'ve reached the end")')
                     if end_message:
                         logger.info("Reached end of results")
                         break
@@ -305,21 +188,21 @@ class EnhancedGoogleMapsScraper:
         except Exception as e:
             logger.debug(f"Error scrolling: {e}")
 
-    async def _get_listing_links(self, page: Page) -> List[Dict]:
-        """Get all listing links from results panel."""
+    def _get_listings_sync(self) -> List[Dict]:
+        """Get listing links synchronously."""
         try:
-            await asyncio.sleep(2)
+            time.sleep(2)
 
             listing_selector = 'div[role="feed"] a[href*="/maps/place/"]'
-            elements = await page.query_selector_all(listing_selector)
+            elements = self.page.query_selector_all(listing_selector)
 
             links = []
             seen_urls = set()
 
             for element in elements:
                 try:
-                    href = await element.get_attribute('href')
-                    aria_label = await element.get_attribute('aria-label')
+                    href = element.get_attribute('href')
+                    aria_label = element.get_attribute('aria-label')
 
                     if href and href not in seen_urls:
                         name = aria_label if aria_label else f"Business {len(links) + 1}"
@@ -338,22 +221,136 @@ class EnhancedGoogleMapsScraper:
             logger.error(f"Error getting listing links: {e}")
             return []
 
-    async def _click_listing(self, page: Page, link_data: Dict):
-        """Click on a listing."""
+    def _click_listing_sync(self, link_data: Dict):
+        """Click on a listing synchronously."""
         try:
             try:
-                await link_data['element'].click(timeout=5000)
-                await asyncio.sleep(1)
+                link_data['element'].click(timeout=5000)
+                time.sleep(1)
             except:
-                await page.goto(link_data['url'], wait_until='domcontentloaded')
-                await asyncio.sleep(2)
+                self.page.goto(link_data['url'], wait_until='domcontentloaded')
+                time.sleep(2)
         except Exception as e:
             logger.debug(f"Error clicking listing: {e}")
             raise
 
-    async def _save_to_database(self, business_data: Dict) -> bool:
+    def _extract_business_data_sync(self, search_query: str) -> Optional[Dict]:
+        """Extract business data synchronously."""
+        try:
+            return self.extractor.extract_business_data_sync(self.page, search_query)
+        except Exception as e:
+            logger.error(f"Error extracting data: {e}")
+            return None
+
+    async def _scrape_listings(
+        self,
+        search_query: str,
+        max_results: int,
+        job_id: int
+    ) -> List[Dict]:
+        """Scrape listings."""
+        results = []
+        scraped_urls = set()
+        consecutive_failures = 0
+        max_consecutive_failures = 5
+
+        try:
+            # Scroll to load more results
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(_executor, self._scroll_results_sync, max_results)
+
+            # Get listing links
+            listing_links = await loop.run_in_executor(_executor, self._get_listings_sync)
+            logger.info(f"Found {len(listing_links)} listings")
+
+            for i, link_data in enumerate(listing_links[:max_results]):
+                try:
+                    # Check rate limiter health
+                    if not self.rate_limiter.is_healthy():
+                        logger.warning("Rate limiter unhealthy, entering recovery mode")
+                        await self.rate_limiter.enter_cooldown()
+
+                    # Skip if already scraped
+                    if link_data['url'] in scraped_urls:
+                        continue
+
+                    logger.info(f"Scraping {i + 1}/{min(len(listing_links), max_results)}: {link_data['name']}")
+
+                    # Apply rate limiting
+                    await self.rate_limiter.wait_if_needed()
+
+                    # Click listing
+                    await loop.run_in_executor(_executor, self._click_listing_sync, link_data)
+                    await asyncio.sleep(2)
+
+                    # Extract data
+                    business_data = await loop.run_in_executor(
+                        _executor,
+                        self._extract_business_data_sync,
+                        search_query
+                    )
+
+                    if business_data:
+                        # Save to database
+                        saved = self._save_to_database_sync(business_data)
+                        if saved:
+                            results.append(business_data)
+                            scraped_urls.add(link_data['url'])
+                            self.results_scraped += 1
+                            consecutive_failures = 0
+
+                            # Update job progress
+                            if job_id:
+                                self._update_job_progress_sync(job_id, len(results))
+
+                        self.rate_limiter.record_success()
+                    else:
+                        consecutive_failures += 1
+
+                    # Batch delay
+                    if (i + 1) % 10 == 0:
+                        await self.rate_limiter.wait_after_batch(10)
+
+                    # Check if too many consecutive failures
+                    if consecutive_failures >= max_consecutive_failures:
+                        logger.error(f"Too many consecutive failures ({consecutive_failures}), stopping")
+                        break
+
+                except Exception as e:
+                    logger.error(f"Error scraping listing {i + 1}: {e}")
+                    self.rate_limiter.record_error(trigger_cooldown=False)
+                    consecutive_failures += 1
+                    continue
+
+        except Exception as e:
+            logger.error(f"Fatal error during listing scrape: {e}")
+            self.rate_limiter.record_error()
+
+        return results
+
+    def _save_to_database_sync(self, business_data: Dict) -> bool:
         """Save business data to database."""
         try:
+            # Enrich with website data if enabled
+            if self.extract_emails and self.website_enricher and business_data.get('website'):
+                try:
+                    logger.info(f"Enriching from website: {business_data['website']}")
+                    enrichment = self.website_enricher.enrich_from_website_sync(business_data['website'])
+
+                    if enrichment.get('email') and not business_data.get('email'):
+                        business_data['email'] = enrichment['email']
+                    if enrichment.get('social_facebook') and not business_data.get('social_facebook'):
+                        business_data['social_facebook'] = enrichment['social_facebook']
+                    if enrichment.get('social_instagram') and not business_data.get('social_instagram'):
+                        business_data['social_instagram'] = enrichment['social_instagram']
+                    if enrichment.get('social_twitter') and not business_data.get('social_twitter'):
+                        business_data['social_twitter'] = enrichment['social_twitter']
+                    if enrichment.get('social_linkedin') and not business_data.get('social_linkedin'):
+                        business_data['social_linkedin'] = enrichment['social_linkedin']
+
+                except Exception as e:
+                    logger.warning(f"Website enrichment failed: {e}")
+
             with db_manager.get_session() as session:
                 # Check for duplicates
                 if business_data.get('place_id'):
@@ -378,29 +375,7 @@ class EnhancedGoogleMapsScraper:
             logger.error(f"Database error: {e}")
             return False
 
-    async def _create_scrape_job(self, search_query: str, max_results: int) -> ScrapeJob:
-        """Create scrape job in database."""
-        try:
-            with db_manager.get_session() as session:
-                from datetime import datetime
-                job = ScrapeJob(
-                    search_query=search_query,
-                    max_results=max_results,
-                    leads_target=max_results,
-                    status='running',
-                    started_at=datetime.now()
-                )
-                session.add(job)
-                session.commit()
-                session.refresh(job)
-
-                logger.info(f"Created job: {job.id}")
-                return job
-        except Exception as e:
-            logger.error(f"Error creating job: {e}")
-            raise
-
-    async def _update_job_progress(self, job_id: int, leads_scraped: int):
+    def _update_job_progress_sync(self, job_id: int, leads_scraped: int):
         """Update job progress."""
         try:
             with db_manager.get_session() as session:
@@ -411,7 +386,7 @@ class EnhancedGoogleMapsScraper:
         except Exception as e:
             logger.debug(f"Error updating progress: {e}")
 
-    async def _update_job_status(
+    def _update_job_status_sync(
         self,
         job_id: int,
         status: str,

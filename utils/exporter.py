@@ -6,6 +6,14 @@ from pathlib import Path
 from datetime import datetime
 from loguru import logger
 
+try:
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    OPENPYXL_AVAILABLE = True
+except ImportError:
+    OPENPYXL_AVAILABLE = False
+
 from database import db_manager, BusinessLead
 
 
@@ -211,6 +219,129 @@ class DataExporter:
 
         except Exception as e:
             logger.error(f"Error exporting cold calling format: {e}")
+            raise
+
+    def export_to_excel(
+        self,
+        data: Optional[List[Dict]] = None,
+        filters: Optional[Dict] = None,
+        filename: Optional[str] = None
+    ) -> str:
+        """
+        Export data to Excel (.xlsx) file with formatting.
+
+        Args:
+            data: List of business data dictionaries (if None, fetch from DB)
+            filters: Database filters to apply when fetching data
+            filename: Output filename (auto-generated if None)
+
+        Returns:
+            Path to the exported Excel file
+        """
+        if not OPENPYXL_AVAILABLE:
+            logger.error("openpyxl not installed. Install with: pip install openpyxl")
+            raise ImportError("openpyxl is required for Excel export")
+
+        try:
+            # Get data from database if not provided
+            if data is None:
+                data = self._fetch_from_database(filters)
+
+            if not data:
+                logger.warning("No data to export")
+                return None
+
+            # Generate filename
+            if filename is None:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"leads_export_{timestamp}.xlsx"
+
+            if not filename.endswith('.xlsx'):
+                filename += '.xlsx'
+
+            filepath = self.output_dir / filename
+
+            # Create workbook and worksheet
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Leads"
+
+            # Define columns with headers
+            columns = [
+                ('ID', 'id', 8),
+                ('Business Name', 'business_name', 30),
+                ('Phone', 'phone', 15),
+                ('Email', 'email', 25),
+                ('Website', 'website', 30),
+                ('Category', 'category', 20),
+                ('Full Address', 'full_address', 40),
+                ('City', 'city', 15),
+                ('State', 'state', 15),
+                ('Pin Code', 'pin_code', 10),
+                ('Rating', 'rating', 8),
+                ('Reviews', 'review_count', 10),
+                ('Quality Score', 'data_quality_score', 12),
+                ('Maps URL', 'maps_url', 40),
+                ('Place ID', 'place_id', 20),
+                ('Scraped At', 'scraped_at', 20),
+                ('Search Query', 'search_query', 25),
+            ]
+
+            # Define styles
+            header_font = Font(bold=True, color="FFFFFF")
+            header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+            header_alignment = Alignment(horizontal="center", vertical="center")
+            thin_border = Border(
+                left=Side(style='thin'),
+                right=Side(style='thin'),
+                top=Side(style='thin'),
+                bottom=Side(style='thin')
+            )
+
+            # Write headers
+            for col_idx, (header, _, width) in enumerate(columns, 1):
+                cell = ws.cell(row=1, column=col_idx, value=header)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = header_alignment
+                cell.border = thin_border
+                ws.column_dimensions[get_column_letter(col_idx)].width = width
+
+            # Write data
+            for row_idx, row_data in enumerate(data, 2):
+                for col_idx, (_, field, _) in enumerate(columns, 1):
+                    value = row_data.get(field)
+
+                    # Convert datetime to string
+                    if isinstance(value, datetime):
+                        value = value.strftime("%Y-%m-%d %H:%M:%S")
+
+                    cell = ws.cell(row=row_idx, column=col_idx, value=value)
+                    cell.border = thin_border
+
+                    # Highlight high quality scores
+                    if field == 'data_quality_score' and value:
+                        if value >= 80:
+                            cell.fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+                        elif value >= 60:
+                            cell.fill = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
+                        elif value < 40:
+                            cell.fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+
+            # Freeze the header row
+            ws.freeze_panes = 'A2'
+
+            # Add auto-filter
+            ws.auto_filter.ref = ws.dimensions
+
+            # Save workbook
+            wb.save(filepath)
+
+            logger.info(f"Exported {len(data)} records to Excel: {filepath}")
+            return str(filepath)
+
+        except Exception as e:
+            logger.error(f"Error exporting to Excel: {e}")
             raise
 
     def _fetch_from_database(self, filters: Optional[Dict] = None) -> List[Dict]:

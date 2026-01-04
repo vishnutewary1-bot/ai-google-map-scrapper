@@ -25,12 +25,27 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // Page Navigation
-function showPage(pageName) {
+function showPage(pageName, evt) {
     // Update nav items
     document.querySelectorAll('.nav-item').forEach(item => {
         item.classList.remove('active');
     });
-    event.target.closest('.nav-item').classList.add('active');
+
+    // Handle the event properly - evt might be undefined if called programmatically
+    if (evt && evt.target) {
+        const navItem = evt.target.closest('.nav-item');
+        if (navItem) {
+            navItem.classList.add('active');
+        }
+    } else {
+        // Find and activate the correct nav item by page name
+        document.querySelectorAll('.nav-item').forEach(item => {
+            if (item.textContent.toLowerCase().includes(pageName.toLowerCase()) ||
+                item.querySelector('span')?.textContent.toLowerCase().includes(pageName.toLowerCase())) {
+                item.classList.add('active');
+            }
+        });
+    }
 
     // Update pages
     document.querySelectorAll('.page').forEach(page => {
@@ -156,6 +171,21 @@ async function loadJobs() {
                     ${job.status === 'failed' ? `
                         <button class="action-btn" onclick="retryJob(${job.id})" title="Retry">
                             <i class="fas fa-redo"></i>
+                        </button>
+                    ` : ''}
+                    ${job.status === 'running' ? `
+                        <button class="action-btn" onclick="pauseJob(${job.id})" title="Pause">
+                            <i class="fas fa-pause"></i>
+                        </button>
+                    ` : ''}
+                    ${job.status === 'paused' ? `
+                        <button class="action-btn" onclick="resumeJob(${job.id})" title="Resume">
+                            <i class="fas fa-play"></i>
+                        </button>
+                    ` : ''}
+                    ${job.status !== 'running' ? `
+                        <button class="action-btn action-btn-danger" onclick="deleteJob(${job.id})" title="Delete">
+                            <i class="fas fa-trash"></i>
                         </button>
                     ` : ''}
                 </td>
@@ -358,7 +388,11 @@ async function exportData(event) {
         if (!response.ok) throw new Error('Export failed');
 
         const result = await response.json();
-        showNotification(`Export successful! ${result.count} leads exported to ${result.filepath}`, 'success');
+        showNotification(`Export successful! ${result.count} leads exported. Downloading...`, 'success');
+
+        // Trigger file download
+        const filename = result.filepath.split(/[/\\]/).pop();
+        downloadExportFile(filename);
 
         showLoading(false);
 
@@ -367,6 +401,17 @@ async function exportData(event) {
         showNotification('Export failed: ' + error.message, 'error');
         showLoading(false);
     }
+}
+
+// Download exported file
+function downloadExportFile(filename) {
+    const downloadUrl = `${API_URL}/export/download/${filename}`;
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 }
 
 // Load Analytics
@@ -463,23 +508,49 @@ async function loadAnalytics() {
 }
 
 // Settings
-function loadSavedSettings() {
-    const settings = localStorage.getItem('scraperSettings');
-    if (settings) {
-        const parsed = JSON.parse(settings);
-        // Apply settings if needed
+async function loadSavedSettings() {
+    try {
+        const response = await fetch(`${API_URL}/settings`);
+        if (response.ok) {
+            const data = await response.json();
+            // Store in localStorage as backup
+            localStorage.setItem('scraperSettings', JSON.stringify(data.settings));
+        }
+    } catch (error) {
+        console.error('Error loading settings from API:', error);
+        // Fall back to localStorage
     }
 }
 
-function loadSettingsData() {
-    // Load current settings from API or localStorage
+async function loadSettingsData() {
+    try {
+        // Try to load from API first
+        const response = await fetch(`${API_URL}/settings`);
+        if (response.ok) {
+            const data = await response.json();
+            const settings = data.settings;
+
+            document.getElementById('settingMaxRequests').value = settings.max_requests_per_hour || 100;
+            document.getElementById('settingDelay').value = settings.delay_between_requests_min || 3;
+            document.getElementById('settingHeadless').value = settings.headless_mode ? 'true' : 'false';
+            document.getElementById('settingDeduplicate').value = settings.auto_deduplicate ? 'true' : 'false';
+
+            // Also load system health
+            loadSystemHealth();
+            return;
+        }
+    } catch (error) {
+        console.error('Error loading settings from API:', error);
+    }
+
+    // Fall back to localStorage
     const settings = localStorage.getItem('scraperSettings');
     if (settings) {
         const parsed = JSON.parse(settings);
-        document.getElementById('settingMaxRequests').value = parsed.max_requests || 100;
-        document.getElementById('settingDelay').value = parsed.delay || 2;
-        document.getElementById('settingHeadless').value = parsed.headless || 'true';
-        document.getElementById('settingDeduplicate').value = parsed.deduplicate || 'true';
+        document.getElementById('settingMaxRequests').value = parsed.max_requests_per_hour || parsed.max_requests || 100;
+        document.getElementById('settingDelay').value = parsed.delay_between_requests_min || parsed.delay || 3;
+        document.getElementById('settingHeadless').value = (parsed.headless_mode !== undefined ? parsed.headless_mode : parsed.headless) ? 'true' : 'false';
+        document.getElementById('settingDeduplicate').value = (parsed.auto_deduplicate !== undefined ? parsed.auto_deduplicate : parsed.deduplicate) ? 'true' : 'false';
     }
 }
 
@@ -487,14 +558,80 @@ async function saveSettings(event) {
     event.preventDefault();
 
     const settings = {
-        max_requests: parseInt(document.getElementById('settingMaxRequests').value),
-        delay: parseFloat(document.getElementById('settingDelay').value),
-        headless: document.getElementById('settingHeadless').value === 'true',
-        deduplicate: document.getElementById('settingDeduplicate').value === 'true'
+        max_requests_per_hour: parseInt(document.getElementById('settingMaxRequests').value),
+        delay_between_requests_min: parseFloat(document.getElementById('settingDelay').value),
+        headless_mode: document.getElementById('settingHeadless').value === 'true',
+        auto_deduplicate: document.getElementById('settingDeduplicate').value === 'true'
     };
 
-    localStorage.setItem('scraperSettings', JSON.stringify(settings));
-    showNotification('Settings saved successfully!', 'success');
+    try {
+        // Save to backend API
+        const response = await fetch(`${API_URL}/settings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(settings)
+        });
+
+        if (response.ok) {
+            // Also save to localStorage as backup
+            localStorage.setItem('scraperSettings', JSON.stringify(settings));
+            showNotification('Settings saved successfully!', 'success');
+        } else {
+            throw new Error('Failed to save settings to server');
+        }
+    } catch (error) {
+        console.error('Error saving settings:', error);
+        // Still save to localStorage
+        localStorage.setItem('scraperSettings', JSON.stringify(settings));
+        showNotification('Settings saved locally (server unavailable)', 'warning');
+    }
+}
+
+// Load system health information
+async function loadSystemHealth() {
+    try {
+        const response = await fetch(`${API_URL}/health`);
+        if (response.ok) {
+            const health = await response.json();
+
+            // Update UI with health info if elements exist
+            const healthContainer = document.getElementById('systemHealth');
+            if (healthContainer) {
+                if (health.system && typeof health.system === 'object') {
+                    healthContainer.innerHTML = `
+                        <div class="health-item">
+                            <span class="label">CPU Usage:</span>
+                            <span class="value">${health.system.cpu_percent}%</span>
+                        </div>
+                        <div class="health-item">
+                            <span class="label">Memory Usage:</span>
+                            <span class="value">${health.system.memory_percent}% (${health.system.memory_used_gb}GB / ${health.system.memory_total_gb}GB)</span>
+                        </div>
+                        <div class="health-item">
+                            <span class="label">Disk Usage:</span>
+                            <span class="value">${health.system.disk_percent}% (${health.system.disk_free_gb}GB free)</span>
+                        </div>
+                        <div class="health-item">
+                            <span class="label">Database:</span>
+                            <span class="value ${health.database === 'healthy' ? 'text-success' : 'text-danger'}">${health.database}</span>
+                        </div>
+                        <div class="health-item">
+                            <span class="label">Active Scrapers:</span>
+                            <span class="value">${health.active_scrapers}</span>
+                        </div>
+                        <div class="health-item">
+                            <span class="label">WebSocket Connections:</span>
+                            <span class="value">${health.websocket_connections}</span>
+                        </div>
+                    `;
+                } else {
+                    healthContainer.innerHTML = `<p>System health: ${health.system || 'Unknown'}</p>`;
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Error loading system health:', error);
+    }
 }
 
 // WebSocket Connection
@@ -864,27 +1001,470 @@ function saveFilterPreset() {
     showNotification(`Filter preset "${presetName}" saved!`, 'success');
 }
 
+// Load smart filter presets from API
+async function loadFilterPresets() {
+    try {
+        const response = await fetch(`${API_URL}/filter-presets`);
+        if (response.ok) {
+            const data = await response.json();
+            return data.presets;
+        }
+    } catch (error) {
+        console.error('Error loading filter presets:', error);
+    }
+    return {};
+}
+
+// Apply a smart filter preset
+async function applyFilterPreset(presetKey) {
+    const presets = await loadFilterPresets();
+    const preset = presets[presetKey];
+
+    if (!preset) {
+        showNotification('Preset not found', 'error');
+        return;
+    }
+
+    // Clear existing filters
+    clearFilters();
+
+    // Apply preset filters
+    const filters = preset.filters;
+
+    if (filters.min_quality) {
+        document.getElementById('filterMinQuality').value = filters.min_quality;
+    }
+    if (filters.has_phone) {
+        document.getElementById('filterHasPhone').checked = true;
+    }
+    if (filters.has_email) {
+        document.getElementById('filterHasEmail').checked = true;
+    }
+    if (filters.has_website) {
+        document.getElementById('filterHasWebsite').checked = true;
+    }
+    if (filters.has_facebook) {
+        document.getElementById('filterHasFacebook').checked = true;
+    }
+    if (filters.min_rating) {
+        document.getElementById('filterMinRating').value = filters.min_rating;
+    }
+    if (filters.min_reviews) {
+        document.getElementById('filterMinReviews').value = filters.min_reviews;
+    }
+
+    // Apply the filters
+    applyAdvancedFilters();
+    showNotification(`Applied preset: ${preset.name}`, 'success');
+}
+
+// Quick filter buttons for common presets
+function initQuickFilters() {
+    const quickFiltersHtml = `
+        <div class="quick-filters" style="margin-bottom: 1rem;">
+            <span style="font-weight: 500; margin-right: 0.5rem;">Quick Filters:</span>
+            <button class="btn btn-sm btn-outline" onclick="applyFilterPreset('high_quality')">High Quality</button>
+            <button class="btn btn-sm btn-outline" onclick="applyFilterPreset('cold_call_ready')">Cold Call Ready</button>
+            <button class="btn btn-sm btn-outline" onclick="applyFilterPreset('email_campaign')">Email Campaign</button>
+            <button class="btn btn-sm btn-outline" onclick="applyFilterPreset('complete_contact')">Complete Contact</button>
+            <button class="btn btn-sm btn-outline" onclick="applyFilterPreset('top_rated')">Top Rated</button>
+        </div>
+    `;
+
+    // Insert quick filters before the leads table filter section if it exists
+    const filterSection = document.querySelector('.leads-filter-section, .filter-section, #leadsFilters');
+    if (filterSection) {
+        filterSection.insertAdjacentHTML('afterbegin', quickFiltersHtml);
+    }
+}
+
 // Legacy function for backward compatibility
 function applyFilters() {
     applyAdvancedFilters();
 }
 
-// View lead details (to be implemented)
-function viewLeadDetails(id) {
-    showNotification('Lead details view coming soon!', 'info');
+// View lead details
+async function viewLeadDetails(id) {
+    try {
+        showLoading(true);
+        const response = await fetch(`${API_URL}/leads/${id}`);
+
+        if (!response.ok) throw new Error('Failed to load lead details');
+
+        const lead = await response.json();
+        showLoading(false);
+
+        // Create modal HTML
+        const modalHtml = `
+            <div class="modal-overlay" id="leadModal" onclick="closeModal(event)">
+                <div class="modal-content" onclick="event.stopPropagation()">
+                    <div class="modal-header">
+                        <h2>${lead.business_name || 'Business Details'}</h2>
+                        <button class="modal-close" onclick="closeLeadModal()">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="lead-details-grid">
+                            <div class="detail-section">
+                                <h3>Contact Information</h3>
+                                <div class="detail-row"><span class="label">Phone:</span> <span>${lead.phone || 'N/A'}</span></div>
+                                <div class="detail-row"><span class="label">Email:</span> <span>${lead.email || 'N/A'}</span></div>
+                                <div class="detail-row"><span class="label">Website:</span> <span>${lead.website ? `<a href="${lead.website}" target="_blank">${lead.website}</a>` : 'N/A'}</span></div>
+                            </div>
+                            <div class="detail-section">
+                                <h3>Location</h3>
+                                <div class="detail-row"><span class="label">Address:</span> <span>${lead.full_address || 'N/A'}</span></div>
+                                <div class="detail-row"><span class="label">City:</span> <span>${lead.city || 'N/A'}</span></div>
+                                <div class="detail-row"><span class="label">State:</span> <span>${lead.state || 'N/A'}</span></div>
+                                <div class="detail-row"><span class="label">Pin Code:</span> <span>${lead.pin_code || 'N/A'}</span></div>
+                            </div>
+                            <div class="detail-section">
+                                <h3>Business Info</h3>
+                                <div class="detail-row"><span class="label">Category:</span> <span>${lead.category || 'N/A'}</span></div>
+                                <div class="detail-row"><span class="label">Rating:</span> <span>${lead.rating ? lead.rating + ' ★' : 'N/A'}</span></div>
+                                <div class="detail-row"><span class="label">Reviews:</span> <span>${lead.review_count || 'N/A'}</span></div>
+                                <div class="detail-row"><span class="label">Price Level:</span> <span>${lead.price_level || 'N/A'}</span></div>
+                                <div class="detail-row"><span class="label">Quality Score:</span> <span>${getQualityBadge(lead.data_quality_score)}</span></div>
+                            </div>
+                            <div class="detail-section">
+                                <h3>Social Media</h3>
+                                <div class="detail-row"><span class="label">Facebook:</span> <span>${lead.social_facebook ? `<a href="${lead.social_facebook}" target="_blank">View</a>` : 'N/A'}</span></div>
+                                <div class="detail-row"><span class="label">Instagram:</span> <span>${lead.social_instagram ? `<a href="${lead.social_instagram}" target="_blank">View</a>` : 'N/A'}</span></div>
+                                <div class="detail-row"><span class="label">Twitter:</span> <span>${lead.social_twitter ? `<a href="${lead.social_twitter}" target="_blank">View</a>` : 'N/A'}</span></div>
+                                <div class="detail-row"><span class="label">LinkedIn:</span> <span>${lead.social_linkedin ? `<a href="${lead.social_linkedin}" target="_blank">View</a>` : 'N/A'}</span></div>
+                            </div>
+                            <div class="detail-section">
+                                <h3>Business Hours</h3>
+                                <div class="detail-row"><span class="label">Monday:</span> <span>${lead.hours_monday || 'N/A'}</span></div>
+                                <div class="detail-row"><span class="label">Tuesday:</span> <span>${lead.hours_tuesday || 'N/A'}</span></div>
+                                <div class="detail-row"><span class="label">Wednesday:</span> <span>${lead.hours_wednesday || 'N/A'}</span></div>
+                                <div class="detail-row"><span class="label">Thursday:</span> <span>${lead.hours_thursday || 'N/A'}</span></div>
+                                <div class="detail-row"><span class="label">Friday:</span> <span>${lead.hours_friday || 'N/A'}</span></div>
+                                <div class="detail-row"><span class="label">Saturday:</span> <span>${lead.hours_saturday || 'N/A'}</span></div>
+                                <div class="detail-row"><span class="label">Sunday:</span> <span>${lead.hours_sunday || 'N/A'}</span></div>
+                            </div>
+                            <div class="detail-section">
+                                <h3>Metadata</h3>
+                                <div class="detail-row"><span class="label">Place ID:</span> <span>${lead.place_id || 'N/A'}</span></div>
+                                <div class="detail-row"><span class="label">Maps URL:</span> <span>${lead.maps_url ? `<a href="${lead.maps_url}" target="_blank">Open in Maps</a>` : 'N/A'}</span></div>
+                                <div class="detail-row"><span class="label">Coordinates:</span> <span>${lead.latitude && lead.longitude ? `${lead.latitude}, ${lead.longitude}` : 'N/A'}</span></div>
+                                <div class="detail-row"><span class="label">Scraped At:</span> <span>${formatDate(lead.scraped_at)}</span></div>
+                                <div class="detail-row"><span class="label">Search Query:</span> <span>${lead.search_query || 'N/A'}</span></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" onclick="closeLeadModal()">Close</button>
+                        <button class="btn btn-primary" onclick="editLead(${lead.id})">Edit</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Add modal to page
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+        // Add modal styles if not already present
+        if (!document.getElementById('modalStyles')) {
+            const styles = document.createElement('style');
+            styles.id = 'modalStyles';
+            styles.textContent = `
+                .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+                .modal-content { background: var(--card-bg, #fff); border-radius: 12px; width: 90%; max-width: 900px; max-height: 90vh; overflow: hidden; display: flex; flex-direction: column; }
+                .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.5rem; border-bottom: 1px solid var(--border-color, #e0e0e0); }
+                .modal-header h2 { margin: 0; font-size: 1.25rem; }
+                .modal-close { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-secondary, #666); }
+                .modal-body { padding: 1.5rem; overflow-y: auto; flex: 1; }
+                .modal-footer { padding: 1rem 1.5rem; border-top: 1px solid var(--border-color, #e0e0e0); display: flex; justify-content: flex-end; gap: 0.5rem; }
+                .lead-details-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; }
+                .detail-section { background: var(--bg-secondary, #f5f5f5); padding: 1rem; border-radius: 8px; }
+                .detail-section h3 { margin: 0 0 0.75rem 0; font-size: 0.875rem; text-transform: uppercase; color: var(--text-secondary, #666); }
+                .detail-row { display: flex; justify-content: space-between; padding: 0.375rem 0; border-bottom: 1px solid var(--border-color, #e0e0e0); }
+                .detail-row:last-child { border-bottom: none; }
+                .detail-row .label { font-weight: 500; color: var(--text-secondary, #666); }
+            `;
+            document.head.appendChild(styles);
+        }
+
+    } catch (error) {
+        showLoading(false);
+        console.error('Error loading lead details:', error);
+        showNotification('Failed to load lead details', 'error');
+    }
 }
 
-// View job details (to be implemented)
-function viewJobDetails(id) {
-    showNotification('Job details view coming soon!', 'info');
+function closeLeadModal() {
+    const modal = document.getElementById('leadModal');
+    if (modal) modal.remove();
 }
 
-// Retry job (to be implemented)
-function retryJob(id) {
-    showNotification('Job retry coming soon!', 'info');
+function closeModal(event) {
+    if (event.target.classList.contains('modal-overlay')) {
+        event.target.remove();
+    }
 }
 
-// Delete lead (to be implemented)
+// Edit lead (shows edit form)
+async function editLead(id) {
+    closeLeadModal();
+
+    try {
+        showLoading(true);
+        const response = await fetch(`${API_URL}/leads/${id}`);
+
+        if (!response.ok) throw new Error('Failed to load lead');
+
+        const lead = await response.json();
+        showLoading(false);
+
+        // Create edit modal HTML
+        const modalHtml = `
+            <div class="modal-overlay" id="editLeadModal" onclick="closeModal(event)">
+                <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 600px;">
+                    <div class="modal-header">
+                        <h2>Edit Lead</h2>
+                        <button class="modal-close" onclick="closeEditLeadModal()">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="editLeadForm" onsubmit="submitEditLead(event, ${id})">
+                            <div class="form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                                <div class="form-group">
+                                    <label>Business Name</label>
+                                    <input type="text" id="editBusinessName" value="${lead.business_name || ''}" class="form-control">
+                                </div>
+                                <div class="form-group">
+                                    <label>Category</label>
+                                    <input type="text" id="editCategory" value="${lead.category || ''}" class="form-control">
+                                </div>
+                                <div class="form-group">
+                                    <label>Phone</label>
+                                    <input type="text" id="editPhone" value="${lead.phone || ''}" class="form-control">
+                                </div>
+                                <div class="form-group">
+                                    <label>Email</label>
+                                    <input type="email" id="editEmail" value="${lead.email || ''}" class="form-control">
+                                </div>
+                                <div class="form-group" style="grid-column: span 2;">
+                                    <label>Website</label>
+                                    <input type="url" id="editWebsite" value="${lead.website || ''}" class="form-control">
+                                </div>
+                                <div class="form-group" style="grid-column: span 2;">
+                                    <label>Full Address</label>
+                                    <input type="text" id="editFullAddress" value="${lead.full_address || ''}" class="form-control">
+                                </div>
+                                <div class="form-group">
+                                    <label>City</label>
+                                    <input type="text" id="editCity" value="${lead.city || ''}" class="form-control">
+                                </div>
+                                <div class="form-group">
+                                    <label>State</label>
+                                    <input type="text" id="editState" value="${lead.state || ''}" class="form-control">
+                                </div>
+                                <div class="form-group">
+                                    <label>Pin Code</label>
+                                    <input type="text" id="editPinCode" value="${lead.pin_code || ''}" class="form-control">
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" onclick="closeEditLeadModal()">Cancel</button>
+                        <button class="btn btn-primary" onclick="document.getElementById('editLeadForm').dispatchEvent(new Event('submit'))">Save Changes</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    } catch (error) {
+        showLoading(false);
+        console.error('Error loading lead for edit:', error);
+        showNotification('Failed to load lead for editing', 'error');
+    }
+}
+
+function closeEditLeadModal() {
+    const modal = document.getElementById('editLeadModal');
+    if (modal) modal.remove();
+}
+
+async function submitEditLead(event, id) {
+    event.preventDefault();
+
+    const updateData = {
+        business_name: document.getElementById('editBusinessName').value || null,
+        category: document.getElementById('editCategory').value || null,
+        phone: document.getElementById('editPhone').value || null,
+        email: document.getElementById('editEmail').value || null,
+        website: document.getElementById('editWebsite').value || null,
+        full_address: document.getElementById('editFullAddress').value || null,
+        city: document.getElementById('editCity').value || null,
+        state: document.getElementById('editState').value || null,
+        pin_code: document.getElementById('editPinCode').value || null
+    };
+
+    try {
+        showLoading(true);
+        const response = await fetch(`${API_URL}/leads/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updateData)
+        });
+
+        if (!response.ok) throw new Error('Update failed');
+
+        showNotification('Lead updated successfully', 'success');
+        closeEditLeadModal();
+        loadLeads();
+        showLoading(false);
+
+    } catch (error) {
+        showLoading(false);
+        console.error('Error updating lead:', error);
+        showNotification('Failed to update lead: ' + error.message, 'error');
+    }
+}
+
+// View job details
+async function viewJobDetails(id) {
+    try {
+        showLoading(true);
+        const response = await fetch(`${API_URL}/jobs/${id}`);
+
+        if (!response.ok) throw new Error('Failed to load job details');
+
+        const job = await response.json();
+        showLoading(false);
+
+        const modalHtml = `
+            <div class="modal-overlay" id="jobModal" onclick="closeModal(event)">
+                <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 600px;">
+                    <div class="modal-header">
+                        <h2>Job #${job.id} Details</h2>
+                        <button class="modal-close" onclick="closeJobModal()">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="detail-section">
+                            <div class="detail-row"><span class="label">Search Query:</span> <span>${job.search_query}</span></div>
+                            <div class="detail-row"><span class="label">Location:</span> <span>${job.location || 'N/A'}</span></div>
+                            <div class="detail-row"><span class="label">Status:</span> <span>${getStatusBadge(job.status)}</span></div>
+                            <div class="detail-row"><span class="label">Progress:</span> <span>${job.leads_scraped} / ${job.leads_target}</span></div>
+                            <div class="detail-row"><span class="label">Error Count:</span> <span>${job.error_count}</span></div>
+                            <div class="detail-row"><span class="label">Last Error:</span> <span>${job.last_error || 'None'}</span></div>
+                            <div class="detail-row"><span class="label">Started At:</span> <span>${formatDate(job.started_at)}</span></div>
+                            <div class="detail-row"><span class="label">Completed At:</span> <span>${job.completed_at ? formatDate(job.completed_at) : 'N/A'}</span></div>
+                            <div class="detail-row"><span class="label">Created At:</span> <span>${formatDate(job.created_at)}</span></div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" onclick="closeJobModal()">Close</button>
+                        ${job.status === 'failed' ? `<button class="btn btn-primary" onclick="retryJob(${job.id}); closeJobModal();">Retry Job</button>` : ''}
+                        ${job.status === 'running' ? `<button class="btn btn-warning" onclick="pauseJob(${job.id}); closeJobModal();">Pause</button>` : ''}
+                        ${job.status === 'paused' ? `<button class="btn btn-success" onclick="resumeJob(${job.id}); closeJobModal();">Resume</button>` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    } catch (error) {
+        showLoading(false);
+        console.error('Error loading job details:', error);
+        showNotification('Failed to load job details', 'error');
+    }
+}
+
+function closeJobModal() {
+    const modal = document.getElementById('jobModal');
+    if (modal) modal.remove();
+}
+
+// Retry job
+async function retryJob(id) {
+    try {
+        showLoading(true);
+        const response = await fetch(`${API_URL}/jobs/${id}/retry`, {
+            method: 'POST'
+        });
+
+        if (!response.ok) throw new Error('Retry failed');
+
+        showNotification(`Job #${id} queued for retry`, 'success');
+        loadJobs();
+        loadRecentJobs();
+        showLoading(false);
+
+    } catch (error) {
+        showLoading(false);
+        console.error('Error retrying job:', error);
+        showNotification('Failed to retry job: ' + error.message, 'error');
+    }
+}
+
+// Pause job
+async function pauseJob(id) {
+    try {
+        const response = await fetch(`${API_URL}/jobs/${id}/pause`, {
+            method: 'POST'
+        });
+
+        if (!response.ok) throw new Error('Pause failed');
+
+        showNotification(`Job #${id} paused`, 'success');
+        loadJobs();
+        loadRecentJobs();
+
+    } catch (error) {
+        console.error('Error pausing job:', error);
+        showNotification('Failed to pause job: ' + error.message, 'error');
+    }
+}
+
+// Resume job
+async function resumeJob(id) {
+    try {
+        const response = await fetch(`${API_URL}/jobs/${id}/resume`, {
+            method: 'POST'
+        });
+
+        if (!response.ok) throw new Error('Resume failed');
+
+        showNotification(`Job #${id} resumed`, 'success');
+        loadJobs();
+        loadRecentJobs();
+
+    } catch (error) {
+        console.error('Error resuming job:', error);
+        showNotification('Failed to resume job: ' + error.message, 'error');
+    }
+}
+
+// Delete job
+async function deleteJob(id) {
+    if (!confirm('Are you sure you want to delete this job?')) return;
+
+    try {
+        const response = await fetch(`${API_URL}/jobs/${id}`, {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Delete failed');
+        }
+
+        showNotification(`Job #${id} deleted`, 'success');
+        loadJobs();
+        loadRecentJobs();
+
+    } catch (error) {
+        console.error('Error deleting job:', error);
+        showNotification('Failed to delete job: ' + error.message, 'error');
+    }
+}
+
+// Delete lead
 async function deleteLead(id) {
     if (!confirm('Are you sure you want to delete this lead?')) return;
 
@@ -905,11 +1485,48 @@ async function deleteLead(id) {
 }
 
 // Export selected leads
-function showExportModal() {
+async function showExportModal() {
     const selected = document.querySelectorAll('.lead-select:checked');
     if (selected.length === 0) {
         showNotification('Please select leads to export', 'warning');
         return;
     }
-    showNotification(`Export ${selected.length} selected leads feature coming soon!`, 'info');
+
+    const leadIds = Array.from(selected).map(cb => parseInt(cb.dataset.id));
+
+    // Show format selection modal
+    const format = prompt('Enter export format (csv or json):', 'csv');
+    if (!format) return;
+
+    if (!['csv', 'json'].includes(format.toLowerCase())) {
+        showNotification('Invalid format. Use csv or json.', 'error');
+        return;
+    }
+
+    try {
+        showLoading(true);
+        const response = await fetch(`${API_URL}/export/selected`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                lead_ids: leadIds,
+                format: format.toLowerCase()
+            })
+        });
+
+        if (!response.ok) throw new Error('Export failed');
+
+        const result = await response.json();
+        showNotification(`Exported ${result.count} leads. Downloading...`, 'success');
+
+        // Trigger download
+        downloadExportFile(result.filename);
+
+        showLoading(false);
+
+    } catch (error) {
+        showLoading(false);
+        console.error('Error exporting selected leads:', error);
+        showNotification('Export failed: ' + error.message, 'error');
+    }
 }

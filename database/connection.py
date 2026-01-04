@@ -17,19 +17,29 @@ class DatabaseManager:
     def initialize(self):
         """Initialize database connection."""
         try:
-            self.engine = create_engine(
-                settings.database_url,
-                pool_pre_ping=True,
-                pool_size=10,
-                max_overflow=20,
-                echo=False
-            )
+            import os
+            # Create data directory for SQLite if needed
+            if settings.db_type.lower() == "sqlite":
+                os.makedirs("data", exist_ok=True)
+                self.engine = create_engine(
+                    settings.database_url,
+                    connect_args={"check_same_thread": False},
+                    echo=False
+                )
+            else:
+                self.engine = create_engine(
+                    settings.database_url,
+                    pool_pre_ping=True,
+                    pool_size=10,
+                    max_overflow=20,
+                    echo=False
+                )
             self.SessionLocal = sessionmaker(
                 autocommit=False,
                 autoflush=False,
                 bind=self.engine
             )
-            logger.info("Database connection initialized successfully")
+            logger.info(f"Database connection initialized successfully ({settings.db_type})")
         except Exception as e:
             logger.error(f"Failed to initialize database: {e}")
             raise

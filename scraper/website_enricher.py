@@ -1,6 +1,6 @@
 """Website enrichment for extracting emails and social media links."""
 import re
-import aiohttp
+import requests
 from bs4 import BeautifulSoup
 from typing import Dict, Optional, List
 from loguru import logger
@@ -11,11 +11,11 @@ class WebsiteEnricher:
     """Enriches business data by scraping their websites."""
 
     def __init__(self, timeout: int = 15):
-        self.timeout = aiohttp.ClientTimeout(total=timeout)
+        self.timeout = timeout
 
-    async def enrich_from_website(self, website_url: str) -> Dict:
+    def enrich_from_website_sync(self, website_url: str) -> Dict:
         """
-        Extract additional data from business website.
+        Extract additional data from business website (sync version).
 
         Returns dict with: email, social_links, owner_name
         """
@@ -31,7 +31,7 @@ class WebsiteEnricher:
 
         try:
             # Fetch website content
-            html = await self._fetch_website(website_url)
+            html = self._fetch_website_sync(website_url)
             if not html:
                 return enrichment_data
 
@@ -39,14 +39,14 @@ class WebsiteEnricher:
             soup = BeautifulSoup(html, 'lxml')
 
             # Extract email
-            enrichment_data['email'] = await self._extract_email(soup, html)
+            enrichment_data['email'] = self._extract_email_sync(soup, html)
 
             # Extract social media links
-            social_links = await self._extract_social_media(soup)
+            social_links = self._extract_social_media_sync(soup)
             enrichment_data.update(social_links)
 
             # Extract owner name
-            enrichment_data['owner_name'] = await self._extract_owner_name(soup)
+            enrichment_data['owner_name'] = self._extract_owner_name_sync(soup)
 
             logger.info(f"Website enrichment completed for {website_url}")
             return enrichment_data
@@ -55,26 +55,29 @@ class WebsiteEnricher:
             logger.error(f"Error enriching website {website_url}: {e}")
             return enrichment_data
 
-    async def _fetch_website(self, url: str) -> Optional[str]:
-        """Fetch website HTML content."""
+    def _fetch_website_sync(self, url: str) -> Optional[str]:
+        """Fetch website HTML content synchronously."""
         try:
             # Ensure URL has protocol
             if not url.startswith(('http://', 'https://')):
                 url = 'https://' + url
 
-            async with aiohttp.ClientSession(timeout=self.timeout) as session:
-                async with session.get(url, allow_redirects=True) as response:
-                    if response.status == 200:
-                        return await response.text()
-                    else:
-                        logger.debug(f"Website returned status {response.status}")
-                        return None
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+
+            response = requests.get(url, headers=headers, timeout=self.timeout, allow_redirects=True)
+            if response.status_code == 200:
+                return response.text
+            else:
+                logger.debug(f"Website returned status {response.status_code}")
+                return None
 
         except Exception as e:
             logger.debug(f"Error fetching website: {e}")
             return None
 
-    async def _extract_email(self, soup: BeautifulSoup, html: str) -> Optional[str]:
+    def _extract_email_sync(self, soup: BeautifulSoup, html: str) -> Optional[str]:
         """Extract email address from website."""
         emails = set()
 
@@ -122,7 +125,7 @@ class WebsiteEnricher:
 
         return None
 
-    async def _extract_social_media(self, soup: BeautifulSoup) -> Dict:
+    def _extract_social_media_sync(self, soup: BeautifulSoup) -> Dict:
         """Extract social media links."""
         social = {
             'social_facebook': None,
@@ -170,7 +173,7 @@ class WebsiteEnricher:
 
         return social
 
-    async def _extract_owner_name(self, soup: BeautifulSoup) -> Optional[str]:
+    def _extract_owner_name_sync(self, soup: BeautifulSoup) -> Optional[str]:
         """Extract owner/founder name from about page."""
         try:
             # Look for common patterns
