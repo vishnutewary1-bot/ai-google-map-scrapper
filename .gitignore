@@ -29,8 +29,12 @@ wheels/
 .env.production
 .venv
 
-# Credentials (keep safe!)
+# Credentials (NEVER COMMIT)
 config/google_credentials.json
+config/google_token.json
+*.pem
+*.key
+*.crt
 
 # IDE
 .vscode/
@@ -51,8 +55,15 @@ exports/
 !package.json
 
 # Database
+data/*.db
 *.db
 *.sqlite3
+
+# Test cache
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
 
 # OS
 .DS_Store
@@ -62,3 +73,4 @@ Thumbs.db
 playwright-report/
 test-results/
 .vercel
+nul

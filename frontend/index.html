@@ -3,8 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MapLeads Pro - Dashboard</title>
+    <title>MapLeads Pro - Google Maps Lead Scraper</title>
+
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- DataTables CSS -->
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <style>
+        :root {
+            --primary: #667eea;
+            --primary-dark: #5a67d8;
+            --secondary: #764ba2;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --info: #3b82f6;
+            --dark: #1e293b;
+            --light: #f8fafc;
+            --gray: #64748b;
+            --border: #e2e8f0;
+            --sidebar-width: 260px;
+            --header-height: 60px;
+            --card-bg: #ffffff;
+            --bg-primary: #f5f7fa;
+            --bg-secondary: #f1f5f9;
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -12,135 +43,404 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: #f5f7fa;
-            color: #333;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
         }
 
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        /* Layout */
+        .app-container {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: linear-gradient(180deg, var(--dark) 0%, #0f172a 100%);
             color: white;
+            position: fixed;
+            height: 100vh;
+            overflow-y: auto;
+            z-index: 1000;
+            transition: transform 0.3s ease;
+        }
+
+        .sidebar-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .sidebar-header h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .sidebar-header p {
+            font-size: 0.75rem;
+            color: var(--gray);
+            margin-top: 0.25rem;
+        }
+
+        .sidebar-nav {
+            padding: 1rem 0;
+        }
+
+        .nav-section {
+            padding: 0.5rem 1rem;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--gray);
+            margin-top: 1rem;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.875rem 1.5rem;
+            color: rgba(255,255,255,0.7);
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+        }
+
+        .nav-item:hover {
+            background: rgba(255,255,255,0.05);
+            color: white;
+        }
+
+        .nav-item.active {
+            background: rgba(102, 126, 234, 0.2);
+            color: white;
+            border-left-color: var(--primary);
+        }
+
+        .nav-item i {
+            width: 20px;
+            text-align: center;
+        }
+
+        .sidebar-footer {
+            padding: 1rem 1.5rem;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            margin-top: auto;
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.75rem;
+            color: var(--gray);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+        }
+
+        .status-dot.disconnected {
+            background: var(--danger);
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            margin-left: var(--sidebar-width);
+            min-height: 100vh;
+        }
+
+        /* Header */
+        .header {
+            background: var(--card-bg);
+            height: var(--header-height);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 2rem;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .header-left h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .header-btn {
+            background: none;
+            border: none;
+            padding: 0.5rem;
+            cursor: pointer;
+            color: var(--gray);
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+
+        .header-btn:hover {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+        }
+
+        /* Page Container */
+        .page-container {
             padding: 2rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
 
-        .header h1 {
-            font-size: 2rem;
-            margin-bottom: 0.5rem;
+        /* Pages */
+        .page {
+            display: none;
         }
 
-        .header p {
-            opacity: 0.9;
+        .page.active {
+            display: block;
         }
 
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 2rem;
-        }
-
+        /* Stats Grid */
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
             gap: 1.5rem;
             margin-bottom: 2rem;
         }
 
         .stat-card {
-            background: white;
+            background: var(--card-bg);
             padding: 1.5rem;
             border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-            border-left: 4px solid #667eea;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border-left: 4px solid var(--primary);
+            transition: transform 0.2s, box-shadow 0.2s;
         }
 
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .stat-card.success { border-left-color: var(--success); }
+        .stat-card.warning { border-left-color: var(--warning); }
+        .stat-card.danger { border-left-color: var(--danger); }
+        .stat-card.info { border-left-color: var(--info); }
+
         .stat-card h3 {
-            font-size: 0.875rem;
-            color: #64748b;
+            font-size: 0.75rem;
             text-transform: uppercase;
             letter-spacing: 0.5px;
+            color: var(--text-secondary);
             margin-bottom: 0.5rem;
         }
 
         .stat-card .value {
             font-size: 2rem;
             font-weight: 700;
-            color: #1e293b;
+            color: var(--text-primary);
         }
 
+        .stat-card .sub-text {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 0.25rem;
+        }
+
+        /* Cards */
         .card {
-            background: white;
+            background: var(--card-bg);
             border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-bottom: 1.5rem;
+        }
+
+        .card-header {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .card-header h3 {
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        .card-body {
             padding: 1.5rem;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-            margin-bottom: 2rem;
         }
 
-        .card h2 {
-            margin-bottom: 1rem;
-            color: #1e293b;
-        }
-
+        /* Forms */
         .form-group {
-            margin-bottom: 1rem;
+            margin-bottom: 1.25rem;
         }
 
         .form-group label {
             display: block;
-            margin-bottom: 0.5rem;
+            font-size: 0.875rem;
             font-weight: 500;
-            color: #475569;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
         }
 
-        .form-group input,
-        .form-group select {
+        .form-control {
             width: 100%;
-            padding: 0.75rem;
-            border: 2px solid #e2e8f0;
+            padding: 0.75rem 1rem;
+            border: 2px solid var(--border);
             border-radius: 8px;
-            font-size: 1rem;
-            transition: border-color 0.2s;
+            font-size: 0.9375rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            background: var(--card-bg);
         }
 
-        .form-group input:focus,
-        .form-group select:focus {
+        .form-control:focus {
             outline: none;
-            border-color: #667eea;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
 
         .form-row {
             display: grid;
-            grid-template-columns: 2fr 2fr 1fr;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 1rem;
         }
 
-        .btn {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            padding: 0.875rem 1.5rem;
-            border-radius: 8px;
-            font-size: 1rem;
-            font-weight: 600;
+        .form-check {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
             cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
         }
 
-        .btn:hover {
+        .form-check input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        /* Feature Cards */
+        .feature-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .feature-card {
+            background: var(--bg-secondary);
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            padding: 1.25rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .feature-card:hover {
+            border-color: var(--primary);
+        }
+
+        .feature-card.active {
+            background: rgba(102, 126, 234, 0.1);
+            border-color: var(--primary);
+        }
+
+        .feature-card i {
+            font-size: 1.5rem;
+            color: var(--primary);
+            margin-bottom: 0.5rem;
+        }
+
+        .feature-card h4 {
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .feature-card p {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9375rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
         }
 
-        .btn:active {
-            transform: translateY(0);
-        }
-
         .btn-secondary {
-            background: #64748b;
+            background: var(--gray);
+            color: white;
         }
 
-        .btn-export {
-            background: #10b981;
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 2px solid var(--border);
+            color: var(--text-primary);
+        }
+
+        .btn-outline:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .btn-sm {
+            padding: 0.5rem 1rem;
+            font-size: 0.8125rem;
+        }
+
+        /* Tables */
+        .table-container {
+            overflow-x: auto;
         }
 
         .table {
@@ -149,502 +449,1544 @@
         }
 
         .table thead {
-            background: #f8fafc;
+            background: var(--bg-secondary);
         }
 
         .table th,
         .table td {
             padding: 1rem;
             text-align: left;
-            border-bottom: 1px solid #e2e8f0;
+            border-bottom: 1px solid var(--border);
         }
 
         .table th {
+            font-size: 0.75rem;
             font-weight: 600;
-            color: #475569;
-            font-size: 0.875rem;
             text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-secondary);
         }
 
         .table tbody tr:hover {
-            background: #f8fafc;
+            background: var(--bg-secondary);
         }
 
+        /* Badges */
         .badge {
             display: inline-block;
             padding: 0.25rem 0.75rem;
-            border-radius: 12px;
+            border-radius: 20px;
             font-size: 0.75rem;
             font-weight: 600;
         }
 
-        .badge-success {
-            background: #d1fae5;
-            color: #065f46;
-        }
+        .badge-success { background: #d1fae5; color: #065f46; }
+        .badge-warning { background: #fef3c7; color: #92400e; }
+        .badge-danger { background: #fee2e2; color: #991b1b; }
+        .badge-info { background: #dbeafe; color: #1e40af; }
+        .badge-secondary { background: #e2e8f0; color: #475569; }
 
-        .badge-warning {
-            background: #fef3c7;
-            color: #92400e;
-        }
-
-        .badge-error {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-
-        .badge-info {
-            background: #dbeafe;
-            color: #1e40af;
-        }
-
+        /* Progress */
         .progress {
-            width: 100%;
             height: 8px;
-            background: #e2e8f0;
+            background: var(--border);
             border-radius: 4px;
             overflow: hidden;
         }
 
         .progress-bar {
             height: 100%;
-            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(90deg, var(--primary) 0%, var(--secondary) 100%);
             transition: width 0.3s;
         }
 
-        .loading {
-            text-align: center;
-            padding: 2rem;
-            color: #64748b;
-        }
-
-        .spinner {
-            border: 3px solid #e2e8f0;
-            border-top: 3px solid #667eea;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        .tabs {
-            display: flex;
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-            border-bottom: 2px solid #e2e8f0;
-        }
-
-        .tab {
-            padding: 0.75rem 1.5rem;
+        /* Action Buttons */
+        .action-btn {
             background: none;
             border: none;
-            font-size: 1rem;
-            font-weight: 500;
-            color: #64748b;
+            padding: 0.5rem;
             cursor: pointer;
-            border-bottom: 3px solid transparent;
+            color: var(--gray);
+            border-radius: 6px;
             transition: all 0.2s;
         }
 
-        .tab.active {
-            color: #667eea;
-            border-bottom-color: #667eea;
+        .action-btn:hover {
+            background: var(--bg-secondary);
+            color: var(--primary);
         }
 
-        .tab-content {
+        .action-btn-danger:hover {
+            color: var(--danger);
+        }
+
+        /* Grid Layouts */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1.5rem;
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+        }
+
+        /* Filter Section */
+        .filter-section {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .filter-section h4 {
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .filter-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem;
+        }
+
+        .filter-summary {
             display: none;
+            margin-bottom: 1rem;
+            padding: 0.75rem 1rem;
+            background: rgba(102, 126, 234, 0.1);
+            border-radius: 8px;
         }
 
-        .tab-content.active {
-            display: block;
+        .filter-summary .filter-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
         }
 
+        /* Charts */
+        .chart-container {
+            position: relative;
+            height: 300px;
+        }
+
+        /* Loading Overlay */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255,255,255,0.9);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+
+        .loading-overlay.active {
+            display: flex;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Notifications */
         .notification {
             position: fixed;
             top: 1rem;
             right: 1rem;
-            background: white;
             padding: 1rem 1.5rem;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            z-index: 1000;
-            animation: slideIn 0.3s;
+            background: var(--card-bg);
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            z-index: 3000;
+            animation: slideIn 0.3s ease;
         }
+
+        .notification.success { border-left: 4px solid var(--success); }
+        .notification.error { border-left: 4px solid var(--danger); }
+        .notification.warning { border-left: 4px solid var(--warning); }
+        .notification.info { border-left: 4px solid var(--info); }
 
         @keyframes slideIn {
-            from {
-                transform: translateX(400px);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
+            from { transform: translateX(400px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
         }
 
-        .grid-2 {
+        /* System Info */
+        .system-info {
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 2rem;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            padding: 1rem;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            font-size: 0.875rem;
+        }
+
+        .system-info-item {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .system-info-item .label {
+            color: var(--text-secondary);
+        }
+
+        /* Toast Notifications */
+        .toast-container {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            max-width: 400px;
+        }
+
+        .toast {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            padding: 1rem 1.25rem;
+            background: var(--card-bg);
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+            animation: slideIn 0.3s ease;
+            border-left: 4px solid var(--info);
+        }
+
+        .toast.success { border-left-color: var(--success); }
+        .toast.error { border-left-color: var(--danger); }
+        .toast.warning { border-left-color: var(--warning); }
+        .toast.info { border-left-color: var(--info); }
+
+        .toast-icon {
+            font-size: 1.25rem;
+            line-height: 1;
+        }
+
+        .toast.success .toast-icon { color: var(--success); }
+        .toast.error .toast-icon { color: var(--danger); }
+        .toast.warning .toast-icon { color: var(--warning); }
+        .toast.info .toast-icon { color: var(--info); }
+
+        .toast-content {
+            flex: 1;
+        }
+
+        .toast-title {
+            font-weight: 600;
+            font-size: 0.875rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .toast-message {
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+        }
+
+        .toast-close {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 1.25rem;
+            color: var(--gray);
+            padding: 0;
+            line-height: 1;
+        }
+
+        .toast-close:hover {
+            color: var(--text-primary);
+        }
+
+        /* Pagination */
+        .pagination {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.25rem;
+            margin-top: 1.5rem;
+        }
+
+        .pagination-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 36px;
+            height: 36px;
+            padding: 0 0.75rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--card-bg);
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: all 0.2s;
+        }
+
+        .pagination-btn:hover:not(:disabled) {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .pagination-btn.active {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: white;
+        }
+
+        .pagination-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 5000;
+            animation: fadeIn 0.2s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .modal-content {
+            background: var(--card-bg);
+            border-radius: 16px;
+            width: 90%;
+            max-width: 700px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            animation: scaleIn 0.2s ease;
+        }
+
+        @keyframes scaleIn {
+            from { transform: scale(0.95); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .modal-header h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: var(--gray);
+            padding: 0;
+            line-height: 1;
+        }
+
+        .modal-close:hover {
+            color: var(--danger);
+        }
+
+        .modal-body {
+            padding: 1.5rem;
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.75rem;
+            padding: 1.25rem 1.5rem;
+            border-top: 1px solid var(--border);
+        }
+
+        /* Lead Details Grid */
+        .lead-details-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .detail-section {
+            background: var(--bg-secondary);
+            padding: 1.25rem;
+            border-radius: 12px;
+        }
+
+        .detail-section h3 {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--primary);
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.875rem;
+        }
+
+        .detail-row:last-child {
+            border-bottom: none;
+        }
+
+        .detail-row .label {
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .detail-row a {
+            color: var(--primary);
+            text-decoration: none;
+        }
+
+        .detail-row a:hover {
+            text-decoration: underline;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: var(--text-secondary);
+        }
+
+        .empty-state i {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        .empty-state p {
+            font-size: 1rem;
+        }
+
+        /* Quick Actions */
+        .quick-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .quick-action-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.625rem 1rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 0.8125rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .quick-action-btn:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        /* Status indicators */
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .status-indicator .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .status-indicator.running .dot {
+            background: var(--success);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Health Status */
+        .health-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 1rem;
+        }
+
+        .health-item {
+            text-align: center;
+            padding: 1rem;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+        }
+
+        .health-item .label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            margin-bottom: 0.5rem;
+        }
+
+        .health-item .value {
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        .health-item .value.good { color: var(--success); }
+        .health-item .value.bad { color: var(--danger); }
+        .health-item .value.warning { color: var(--warning); }
+
+        /* Data Quality Indicator */
+        .quality-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .quality-bar {
+            flex: 1;
+            height: 6px;
+            background: var(--border);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .quality-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--danger) 0%, var(--warning) 50%, var(--success) 100%);
+            transition: width 0.3s;
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .grid-2, .grid-3 {
+                grid-template-columns: 1fr;
+            }
         }
 
         @media (max-width: 768px) {
-            .form-row,
-            .grid-2 {
-                grid-template-columns: 1fr;
+            .sidebar {
+                transform: translateX(-100%);
+            }
+
+            .sidebar.open {
+                transform: translateX(0);
+            }
+
+            .main-content {
+                margin-left: 0;
             }
 
             .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+
+            .toast-container {
+                left: 1rem;
+                right: 1rem;
+                max-width: none;
+            }
+
+            .modal-content {
+                width: 95%;
+                max-height: 85vh;
+            }
+
+            .lead-details-grid {
                 grid-template-columns: 1fr;
             }
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>🗺️ MapLeads Pro</h1>
-        <p>Google Maps Lead Scraper Dashboard</p>
-    </div>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1><i class="fas fa-map-marked-alt"></i> MapLeads Pro</h1>
+                <p>Google Maps Lead Scraper v2.0</p>
+            </div>
 
-    <div class="container">
-        <!-- Stats Section -->
-        <div class="stats-grid">
-            <div class="stat-card">
-                <h3>Total Leads</h3>
-                <div class="value" id="stat-total-leads">0</div>
-            </div>
-            <div class="stat-card" style="border-left-color: #10b981;">
-                <h3>With Phone</h3>
-                <div class="value" id="stat-with-phone">0</div>
-            </div>
-            <div class="stat-card" style="border-left-color: #f59e0b;">
-                <h3>With Website</h3>
-                <div class="value" id="stat-with-website">0</div>
-            </div>
-            <div class="stat-card" style="border-left-color: #ef4444;">
-                <h3>Avg Quality</h3>
-                <div class="value" id="stat-avg-quality">0%</div>
-            </div>
-        </div>
+            <nav class="sidebar-nav">
+                <div class="nav-section">Main</div>
+                <div class="nav-item active" onclick="showPage('dashboard', event)">
+                    <i class="fas fa-chart-pie"></i>
+                    <span>Dashboard</span>
+                </div>
+                <div class="nav-item" onclick="showPage('scraper', event)">
+                    <i class="fas fa-rocket"></i>
+                    <span>New Scrape</span>
+                </div>
+                <div class="nav-item" onclick="showPage('jobs', event)">
+                    <i class="fas fa-tasks"></i>
+                    <span>Jobs</span>
+                </div>
+                <div class="nav-item" onclick="showPage('leads', event)">
+                    <i class="fas fa-database"></i>
+                    <span>Leads</span>
+                </div>
 
-        <!-- Tabs -->
-        <div class="tabs">
-            <button class="tab active" onclick="showTab('new-scrape')">🚀 New Scrape</button>
-            <button class="tab" onclick="showTab('jobs')">📊 Jobs</button>
-            <button class="tab" onclick="showTab('leads')">📋 Leads</button>
-            <button class="tab" onclick="showTab('export')">💾 Export</button>
-        </div>
+                <div class="nav-section">Tools</div>
+                <div class="nav-item" onclick="showPage('bulk', event)">
+                    <i class="fas fa-layer-group"></i>
+                    <span>Bulk Scrape</span>
+                </div>
+                <div class="nav-item" onclick="showPage('export', event)">
+                    <i class="fas fa-file-export"></i>
+                    <span>Export</span>
+                </div>
+                <div class="nav-item" onclick="showPage('analytics', event)">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Analytics</span>
+                </div>
 
-        <!-- New Scrape Tab -->
-        <div class="tab-content active" id="tab-new-scrape">
-            <div class="card">
-                <h2>Start New Scrape Job</h2>
-                <form id="scrape-form">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="search-query">Search Query *</label>
-                            <input type="text" id="search-query" placeholder="e.g., restaurants, doctors" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="location">Location</label>
-                            <input type="text" id="location" placeholder="e.g., Mumbai, Delhi">
-                        </div>
-                        <div class="form-group">
-                            <label for="max-results">Max Results</label>
-                            <input type="number" id="max-results" value="50" min="1" max="500">
-                        </div>
+                <div class="nav-section">Features</div>
+                <div class="nav-item" onclick="showPage('geo-search', event)">
+                    <i class="fas fa-map-pin"></i>
+                    <span>Geo Search</span>
+                </div>
+                <div class="nav-item" onclick="showPage('webhooks', event)">
+                    <i class="fas fa-bolt"></i>
+                    <span>Webhooks</span>
+                </div>
+                <div class="nav-item" onclick="showPage('sentiment', event)">
+                    <i class="fas fa-smile"></i>
+                    <span>Sentiment</span>
+                </div>
+                <div class="nav-item" onclick="showPage('compare', event)">
+                    <i class="fas fa-balance-scale"></i>
+                    <span>Compare</span>
+                </div>
+                <div class="nav-item" onclick="showPage('emails', event)">
+                    <i class="fas fa-mail-bulk"></i>
+                    <span>Email Templates</span>
+                </div>
+
+                <div class="nav-section">System</div>
+                <div class="nav-item" onclick="showPage('integrations', event)">
+                    <i class="fas fa-plug"></i>
+                    <span>Integrations</span>
+                </div>
+                <div class="nav-item" onclick="showPage('settings', event)">
+                    <i class="fas fa-cog"></i>
+                    <span>Settings</span>
+                </div>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="connection-status">
+                    <span class="status-dot" id="wsStatusDot"></span>
+                    <span>WebSocket: <span id="wsStatus">Connecting...</span></span>
+                </div>
+                <div class="system-info" style="margin-top: 1rem; background: transparent; padding: 0;">
+                    <div class="system-info-item">
+                        <span class="label">Leads:</span>
+                        <span id="sysInfoLeads">0</span>
                     </div>
-                    <div class="form-group">
-                        <label>
-                            <input type="checkbox" id="use-proxies"> Use Proxy Rotation (slower but safer)
-                        </label>
+                    <div class="system-info-item">
+                        <span class="label">Jobs:</span>
+                        <span id="sysInfoJobs">0</span>
                     </div>
-                    <button type="submit" class="btn">🚀 Start Scraping</button>
-                </form>
-            </div>
-        </div>
-
-        <!-- Jobs Tab -->
-        <div class="tab-content" id="tab-jobs">
-            <div class="card">
-                <h2>Scrape Jobs</h2>
-                <div id="jobs-list" class="loading">
-                    <div class="spinner"></div>
-                    <p>Loading jobs...</p>
                 </div>
             </div>
-        </div>
+        </aside>
 
-        <!-- Leads Tab -->
-        <div class="tab-content" id="tab-leads">
-            <div class="card">
-                <h2>Scraped Leads</h2>
-                <div id="leads-list" class="loading">
-                    <div class="spinner"></div>
-                    <p>Loading leads...</p>
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="header">
+                <div class="header-left">
+                    <button class="header-btn" onclick="toggleSidebar()">
+                        <i class="fas fa-bars"></i>
+                    </button>
+                    <h2 id="pageTitle">Dashboard</h2>
+                </div>
+                <div class="header-right">
+                    <button class="header-btn" onclick="refreshData()" title="Refresh">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                </div>
+            </header>
+
+            <div class="page-container">
+                <!-- Dashboard Page -->
+                <div class="page active" id="page-dashboard">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <h3>Total Leads</h3>
+                            <div class="value" id="stat-total">0</div>
+                            <div class="sub-text">All scraped leads</div>
+                        </div>
+                        <div class="stat-card success">
+                            <h3>With Phone</h3>
+                            <div class="value" id="stat-phone">0</div>
+                            <div class="sub-text" id="stat-phone-percent">0% of total</div>
+                        </div>
+                        <div class="stat-card warning">
+                            <h3>With Email</h3>
+                            <div class="value" id="stat-email">0</div>
+                            <div class="sub-text" id="stat-email-percent">0% of total</div>
+                        </div>
+                        <div class="stat-card info">
+                            <h3>Avg Quality</h3>
+                            <div class="value" id="stat-quality">0%</div>
+                            <div class="sub-text" id="stat-quality-desc">No data</div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-clock"></i> Recent Jobs</h3>
+                            <button class="btn btn-sm btn-outline" onclick="showPage('jobs')">View All</button>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-container">
+                                <table class="table">
+                                    <thead>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Query</th>
+                                            <th>Status</th>
+                                            <th>Progress</th>
+                                            <th>Started</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="recentJobsBody">
+                                        <tr>
+                                            <td colspan="5" style="text-align: center; padding: 2rem;">Loading...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- New Scrape Page -->
+                <div class="page" id="page-scraper">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-rocket"></i> Start New Scrape Job</h3>
+                        </div>
+                        <div class="card-body">
+                            <form id="scrapeForm" onsubmit="return startScrape(event)">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="searchQuery">Search Query *</label>
+                                        <input type="text" id="searchQuery" class="form-control" placeholder="e.g., restaurants, doctors, hotels" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="searchLocation">Location</label>
+                                        <input type="text" id="searchLocation" class="form-control" placeholder="e.g., Mumbai, Delhi NCR">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="maxResults">Max Results</label>
+                                        <input type="number" id="maxResults" class="form-control" value="50" min="1" max="500">
+                                    </div>
+                                </div>
+
+                                <h4 style="margin: 1.5rem 0 1rem; font-size: 0.9375rem;">Extraction Options</h4>
+                                <div class="feature-cards">
+                                    <div class="feature-card active" onclick="toggleFeature(this)">
+                                        <i class="fab fa-facebook"></i>
+                                        <h4>Social Media</h4>
+                                        <p>Extract social links</p>
+                                        <input type="hidden" id="extractSocial" value="true">
+                                    </div>
+                                    <div class="feature-card active" onclick="toggleFeature(this)">
+                                        <i class="fas fa-envelope"></i>
+                                        <h4>Contacts</h4>
+                                        <p>Extract emails & phones</p>
+                                        <input type="hidden" id="extractContacts" value="true">
+                                    </div>
+                                    <div class="feature-card active" onclick="toggleFeature(this)">
+                                        <i class="fas fa-building"></i>
+                                        <h4>Company Info</h4>
+                                        <p>Employees, founded year</p>
+                                        <input type="hidden" id="extractInsights" value="true">
+                                    </div>
+                                    <div class="feature-card" onclick="toggleFeature(this)">
+                                        <i class="fas fa-star"></i>
+                                        <h4>Reviews</h4>
+                                        <p>Extract review details</p>
+                                        <input type="hidden" id="extractReviews" value="false">
+                                    </div>
+                                </div>
+
+                                <h4 style="margin: 1.5rem 0 1rem; font-size: 0.9375rem;">Advanced Options</h4>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-check">
+                                            <input type="checkbox" id="useProxies">
+                                            <span>Use Proxy Rotation (slower but safer)</span>
+                                        </label>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-check">
+                                            <input type="checkbox" id="headlessMode" checked>
+                                            <span>Headless Mode (run in background)</span>
+                                        </label>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-check">
+                                            <input type="checkbox" id="deduplicateResults" checked>
+                                            <span>Auto-deduplicate results</span>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-rocket"></i> Start Scraping
+                                    </button>
+                                    <button type="button" class="btn btn-outline" onclick="resetForm()">
+                                        <i class="fas fa-redo"></i> Reset
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Jobs Page -->
+                <div class="page" id="page-jobs">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-tasks"></i> All Scrape Jobs</h3>
+                            <button class="btn btn-sm btn-primary" onclick="showPage('scraper')">
+                                <i class="fas fa-plus"></i> New Job
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-container">
+                                <table class="table" id="jobsTable">
+                                    <thead>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Query</th>
+                                            <th>Location</th>
+                                            <th>Status</th>
+                                            <th>Progress</th>
+                                            <th>Leads</th>
+                                            <th>Started</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="jobsBody">
+                                        <tr>
+                                            <td colspan="8" style="text-align: center; padding: 2rem;">Loading...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Leads Page -->
+                <div class="page" id="page-leads">
+                    <div class="filter-section">
+                        <h4><i class="fas fa-filter"></i> Filters</h4>
+                        <div class="filter-grid">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <input type="text" id="filterSearch" class="form-control" placeholder="Search business name...">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <input type="text" id="filterCity" class="form-control" placeholder="City">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <input type="text" id="filterState" class="form-control" placeholder="State">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <input type="text" id="filterPinCode" class="form-control" placeholder="Pin Code">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <input type="text" id="filterCategory" class="form-control" placeholder="Category">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <input type="text" id="filterSearchQuery" class="form-control" placeholder="Search Query">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <input type="number" id="filterMinQuality" class="form-control" placeholder="Min Quality %">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <input type="number" id="filterMaxQuality" class="form-control" placeholder="Max Quality %">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <input type="number" id="filterMinRating" class="form-control" placeholder="Min Rating" step="0.1">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <input type="number" id="filterMaxRating" class="form-control" placeholder="Max Rating" step="0.1">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <input type="number" id="filterMinReviews" class="form-control" placeholder="Min Reviews">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <select id="filterPriceLevel" class="form-control">
+                                    <option value="">Price Level</option>
+                                    <option value="$">$</option>
+                                    <option value="$$">$$</option>
+                                    <option value="$$$">$$$</option>
+                                    <option value="$$$$">$$$$</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem;">
+                            <label class="form-check"><input type="checkbox" id="filterHasPhone"> Has Phone</label>
+                            <label class="form-check"><input type="checkbox" id="filterHasEmail"> Has Email</label>
+                            <label class="form-check"><input type="checkbox" id="filterHasWebsite"> Has Website</label>
+                            <label class="form-check"><input type="checkbox" id="filterHasFacebook"> Has Facebook</label>
+                            <label class="form-check"><input type="checkbox" id="filterHasInstagram"> Has Instagram</label>
+                            <label class="form-check"><input type="checkbox" id="filterHasTwitter"> Has Twitter</label>
+                            <label class="form-check"><input type="checkbox" id="filterHasLinkedIn"> Has LinkedIn</label>
+                        </div>
+                        <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                            <button class="btn btn-primary btn-sm" onclick="applyAdvancedFilters()">
+                                <i class="fas fa-search"></i> Apply Filters
+                            </button>
+                            <button class="btn btn-outline btn-sm" onclick="clearFilters()">
+                                <i class="fas fa-times"></i> Clear
+                            </button>
+                            <button class="btn btn-outline btn-sm" onclick="saveFilterPreset()">
+                                <i class="fas fa-save"></i> Save Preset
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="filterSummary" class="filter-summary">
+                        <strong>Active Filters:</strong>
+                        <div id="filterTags" class="filter-tags"></div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-database"></i> Leads Database <span id="leadsCount" style="font-weight: normal; color: var(--gray);">(0)</span></h3>
+                            <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                                <button class="btn btn-sm btn-primary" onclick="selectAllLeads()">
+                                    <i class="fas fa-check-double"></i> Select All
+                                </button>
+                                <button class="btn btn-sm btn-outline" onclick="invertSelection()" title="Select unselected, deselect selected">
+                                    <i class="fas fa-exchange-alt"></i> Invert
+                                </button>
+                                <button class="btn btn-sm btn-secondary" onclick="deselectAllLeads()">
+                                    <i class="fas fa-times"></i> Deselect All
+                                </button>
+                                <button class="btn btn-sm btn-success" onclick="exportSelected()">
+                                    <i class="fas fa-file-export"></i> Export Selected
+                                </button>
+                                <button class="btn btn-sm btn-danger" onclick="deleteSelected()">
+                                    <i class="fas fa-trash"></i> Delete Selected
+                                </button>
+                                <button class="btn btn-sm btn-danger" onclick="deleteAllLeads()" style="background: #dc2626;">
+                                    <i class="fas fa-trash-alt"></i> Delete ALL Leads
+                                </button>
+                                <span id="selectedCount" style="color: var(--gray); font-size: 0.875rem; margin-left: 0.5rem;"></span>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="quick-actions">
+                                <button class="quick-action-btn" onclick="applyQuickFilter('high_quality')">
+                                    <i class="fas fa-star"></i> High Quality
+                                </button>
+                                <button class="quick-action-btn" onclick="applyQuickFilter('with_email')">
+                                    <i class="fas fa-envelope"></i> With Email
+                                </button>
+                                <button class="quick-action-btn" onclick="applyQuickFilter('with_phone')">
+                                    <i class="fas fa-phone"></i> With Phone
+                                </button>
+                                <button class="quick-action-btn" onclick="applyQuickFilter('top_rated')">
+                                    <i class="fas fa-thumbs-up"></i> Top Rated
+                                </button>
+                            </div>
+                            <div class="table-container">
+                                <table class="table" id="leadsTable">
+                                    <thead>
+                                        <tr>
+                                            <th><input type="checkbox" id="selectAll"></th>
+                                            <th>Business Name</th>
+                                            <th>Category</th>
+                                            <th>City</th>
+                                            <th>Phone/Email</th>
+                                            <th>Rating</th>
+                                            <th>Quality</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="leadsBody">
+                                        <tr>
+                                            <td colspan="8" style="text-align: center; padding: 2rem;">Loading...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="pagination" id="leadsPagination"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bulk Scrape Page -->
+                <div class="page" id="page-bulk">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-layer-group"></i> Bulk Location Scraping</h3>
+                        </div>
+                        <div class="card-body">
+                            <form id="bulkScrapeForm" onsubmit="return startBulkScrape(event)">
+                                <div class="form-group">
+                                    <label for="bulkQuery">Search Query *</label>
+                                    <input type="text" id="bulkQuery" class="form-control" placeholder="e.g., restaurants" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="bulkLocations">Locations (comma-separated) *</label>
+                                    <textarea id="bulkLocations" class="form-control" rows="4" placeholder="Mumbai, Delhi, Bangalore, Chennai, Hyderabad" required></textarea>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="bulkMaxResults">Max Results per Location</label>
+                                        <input type="number" id="bulkMaxResults" class="form-control" value="50" min="1" max="200">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="bulkDelay">Delay Between Locations (sec)</label>
+                                        <input type="number" id="bulkDelay" class="form-control" value="60" min="30" max="300">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-check">
+                                        <input type="checkbox" id="bulkExtractEmails" checked>
+                                        <span>Extract emails from websites</span>
+                                    </label>
+                                </div>
+
+                                <h4 style="margin: 1.5rem 0 1rem;">Quick Location Presets</h4>
+                                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.5rem;">
+                                    <button type="button" class="btn btn-sm btn-outline" onclick="setLocations('Mumbai, Delhi, Bangalore, Chennai, Hyderabad, Kolkata, Pune, Ahmedabad')">Indian Metros</button>
+                                    <button type="button" class="btn btn-sm btn-outline" onclick="setLocations('Mumbai, Pune, Nagpur, Nashik, Thane, Aurangabad')">Maharashtra</button>
+                                    <button type="button" class="btn btn-sm btn-outline" onclick="setLocations('Bangalore, Mysore, Mangalore, Hubli, Belgaum')">Karnataka</button>
+                                    <button type="button" class="btn btn-sm btn-outline" onclick="setLocations('Chennai, Coimbatore, Madurai, Tiruchirappalli, Salem')">Tamil Nadu</button>
+                                </div>
+
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-rocket"></i> Start Bulk Scraping
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Export Page -->
+                <div class="page" id="page-export">
+                    <div class="grid-2">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-file-export"></i> Export Leads</h3>
+                            </div>
+                            <div class="card-body">
+                                <form id="exportForm" onsubmit="return exportData(event)">
+                                    <div class="form-group">
+                                        <label for="exportFormat">Export Format</label>
+                                        <select id="exportFormat" class="form-control">
+                                            <option value="excel" selected>Excel (.xlsx)</option>
+                                            <option value="csv">CSV</option>
+                                            <option value="json">JSON</option>
+                                            <option value="cold_calling">Cold Calling (Phone focused)</option>
+                                            <option value="email_campaign">Email Campaign</option>
+                                        </select>
+                                    </div>
+
+                                    <h4 style="margin: 1.5rem 0 1rem;">Export Filters</h4>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label class="form-check">
+                                                <input type="checkbox" id="exportHasPhone">
+                                                <span>Only leads with phone numbers</span>
+                                            </label>
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="form-check">
+                                                <input type="checkbox" id="exportHasWebsite">
+                                                <span>Only leads with websites</span>
+                                            </label>
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="form-check">
+                                                <input type="checkbox" id="exportHasEmail">
+                                                <span>Only leads with emails</span>
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="exportCity">Filter by City</label>
+                                            <input type="text" id="exportCity" class="form-control" placeholder="e.g., Mumbai">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="exportMinQuality">Minimum Quality Score</label>
+                                            <input type="number" id="exportMinQuality" class="form-control" value="0" min="0" max="100">
+                                        </div>
+                                    </div>
+
+                                    <button type="submit" class="btn btn-success">
+                                        <i class="fas fa-download"></i> Export Data
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-history"></i> Recent Exports</h3>
+                            </div>
+                            <div class="card-body">
+                                <div id="exportsList">
+                                    <div class="empty-state">
+                                        <i class="fas fa-file-download"></i>
+                                        <p>No exports yet</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Analytics Page -->
+                <div class="page" id="page-analytics">
+                    <div class="stats-grid" style="margin-bottom: 1.5rem;">
+                        <div class="stat-card success">
+                            <h3>High Quality</h3>
+                            <div class="value" id="analytics-high-quality">0</div>
+                            <div class="sub-text">70%+ quality score</div>
+                        </div>
+                        <div class="stat-card warning">
+                            <h3>Medium Quality</h3>
+                            <div class="value" id="analytics-medium-quality">0</div>
+                            <div class="sub-text">40-69% quality score</div>
+                        </div>
+                        <div class="stat-card danger">
+                            <h3>Low Quality</h3>
+                            <div class="value" id="analytics-low-quality">0</div>
+                            <div class="sub-text">Below 40% score</div>
+                        </div>
+                    </div>
+                    <div class="grid-2">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-tags"></i> Top Categories</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="chart-container">
+                                    <canvas id="categoriesChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-map-marker-alt"></i> Top Cities</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="chart-container">
+                                    <canvas id="citiesChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Settings Page -->
+                <div class="page" id="page-settings">
+                    <div class="grid-2">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-cog"></i> Scraper Settings</h3>
+                            </div>
+                            <div class="card-body">
+                                <form id="settingsForm" onsubmit="return saveSettings(event)">
+                                    <div class="form-group">
+                                        <label for="settingMaxRequests">Max Requests per Hour</label>
+                                        <input type="number" id="settingMaxRequests" class="form-control" value="100" min="10" max="500">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="settingDelay">Delay Between Requests (seconds)</label>
+                                        <input type="number" id="settingDelay" class="form-control" value="3" min="1" max="30" step="0.5">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="settingHeadless">Browser Mode</label>
+                                        <select id="settingHeadless" class="form-control">
+                                            <option value="true">Headless (Background)</option>
+                                            <option value="false">Visible (Debug)</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="settingDeduplicate">Auto-Deduplicate</label>
+                                        <select id="settingDeduplicate" class="form-control">
+                                            <option value="true">Enabled</option>
+                                            <option value="false">Disabled</option>
+                                        </select>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-save"></i> Save Settings
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-server"></i> System Health</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="health-grid">
+                                    <div class="health-item">
+                                        <div class="label">API Status</div>
+                                        <div class="value good" id="health-api">Checking...</div>
+                                    </div>
+                                    <div class="health-item">
+                                        <div class="label">Database</div>
+                                        <div class="value" id="health-db">Checking...</div>
+                                    </div>
+                                    <div class="health-item">
+                                        <div class="label">Version</div>
+                                        <div class="value" id="health-version">-</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Geo Search Page -->
+                <div class="page" id="page-geo-search">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-map-pin"></i> Geo-Coordinate Search</h3>
+                        </div>
+                        <div class="card-body">
+                            <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">Search for businesses within a specific radius of coordinates.</p>
+                            <form id="geoSearchForm" onsubmit="return startGeoSearch(event)">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="geoQuery">Search Query *</label>
+                                        <input type="text" id="geoQuery" class="form-control" placeholder="e.g., restaurants, doctors" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="geoLat">Latitude *</label>
+                                        <input type="number" id="geoLat" class="form-control" step="any" placeholder="19.0760" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="geoLng">Longitude *</label>
+                                        <input type="number" id="geoLng" class="form-control" step="any" placeholder="72.8777" required>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="geoRadius">Radius (km)</label>
+                                        <input type="number" id="geoRadius" class="form-control" value="5" min="0.1" max="50" step="0.1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="geoGrid">Grid Size (NxN)</label>
+                                        <select id="geoGrid" class="form-control">
+                                            <option value="1">1x1 (center only)</option>
+                                            <option value="3" selected>3x3 (9 points)</option>
+                                            <option value="5">5x5 (25 points)</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="geoMaxResults">Max Results per Point</label>
+                                        <input type="number" id="geoMaxResults" class="form-control" value="50" min="1" max="200">
+                                    </div>
+                                </div>
+                                <h4 style="margin: 1.5rem 0 1rem;">Quick Location Presets</h4>
+                                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.5rem;">
+                                    <button type="button" class="btn btn-sm btn-outline" onclick="setGeoLocation(19.0760, 72.8777)">Mumbai</button>
+                                    <button type="button" class="btn btn-sm btn-outline" onclick="setGeoLocation(28.6139, 77.2090)">Delhi</button>
+                                    <button type="button" class="btn btn-sm btn-outline" onclick="setGeoLocation(12.9716, 77.5946)">Bangalore</button>
+                                    <button type="button" class="btn btn-sm btn-outline" onclick="setGeoLocation(13.0827, 80.2707)">Chennai</button>
+                                    <button type="button" class="btn btn-sm btn-outline" onclick="setGeoLocation(22.5726, 88.3639)">Kolkata</button>
+                                </div>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-search-location"></i> Start Geo Search
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Webhooks Page -->
+                <div class="page" id="page-webhooks">
+                    <div class="grid-2">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-bolt"></i> Register Webhook</h3>
+                            </div>
+                            <div class="card-body">
+                                <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">Send notifications to Zapier, Make (Integromat), n8n, or any webhook URL.</p>
+                                <form id="webhookForm" onsubmit="return registerWebhook(event)">
+                                    <div class="form-group">
+                                        <label for="webhookName">Webhook Name *</label>
+                                        <input type="text" id="webhookName" class="form-control" placeholder="e.g., zapier-main" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="webhookUrl">Webhook URL *</label>
+                                        <input type="url" id="webhookUrl" class="form-control" placeholder="https://hooks.zapier.com/..." required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="webhookSecret">Secret (optional)</label>
+                                        <input type="text" id="webhookSecret" class="form-control" placeholder="HMAC secret for signing">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Events to trigger:</label>
+                                        <div style="display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 0.5rem;">
+                                            <label class="form-check"><input type="checkbox" name="webhookEvents" value="job.completed" checked> Job Completed</label>
+                                            <label class="form-check"><input type="checkbox" name="webhookEvents" value="job.failed" checked> Job Failed</label>
+                                            <label class="form-check"><input type="checkbox" name="webhookEvents" value="lead.created"> Lead Created</label>
+                                        </div>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-plus"></i> Register Webhook
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-list"></i> Registered Webhooks</h3>
+                                <button class="btn btn-sm btn-outline" onclick="loadWebhooks()"><i class="fas fa-sync"></i></button>
+                            </div>
+                            <div class="card-body">
+                                <div id="webhooksList">
+                                    <div class="empty-state"><i class="fas fa-inbox"></i><p>No webhooks registered</p></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sentiment Analysis Page -->
+                <div class="page" id="page-sentiment">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-smile"></i> Sentiment Analysis</h3>
+                        </div>
+                        <div class="card-body">
+                            <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">Analyze the sentiment of customer reviews using TextBlob.</p>
+                            <form id="sentimentForm" onsubmit="return analyzeSentiment(event)">
+                                <div class="form-group">
+                                    <label for="sentimentLeadId">Lead ID (optional)</label>
+                                    <input type="number" id="sentimentLeadId" class="form-control" placeholder="Enter lead ID to analyze its reviews">
+                                </div>
+                                <div class="form-group">
+                                    <label for="sentimentText">Or enter text directly:</label>
+                                    <textarea id="sentimentText" class="form-control" rows="4" placeholder="Paste review text here to analyze..."></textarea>
+                                </div>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-chart-line"></i> Analyze Sentiment
+                                </button>
+                            </form>
+                            <div id="sentimentResults" style="margin-top: 2rem; display: none;">
+                                <h4 style="margin-bottom: 1rem;">Results</h4>
+                                <div class="stats-grid" id="sentimentStats"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Competitor Comparison Page -->
+                <div class="page" id="page-compare">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-balance-scale"></i> Competitor Comparison</h3>
+                        </div>
+                        <div class="card-body">
+                            <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">Compare multiple businesses side-by-side. Enter 2-10 lead IDs.</p>
+                            <form id="compareForm" onsubmit="return compareCompetitors(event)">
+                                <div class="form-group">
+                                    <label for="compareLeadIds">Lead IDs (comma-separated) *</label>
+                                    <input type="text" id="compareLeadIds" class="form-control" placeholder="1, 2, 3, 4" required>
+                                </div>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-balance-scale"></i> Compare Businesses
+                                </button>
+                            </form>
+                            <div id="comparisonResults" style="margin-top: 2rem; display: none;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Email Templates Page -->
+                <div class="page" id="page-emails">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-mail-bulk"></i> Cold Email Generator</h3>
+                        </div>
+                        <div class="card-body">
+                            <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">Generate personalized cold email templates for your leads.</p>
+                            <form id="emailTemplateForm" onsubmit="return generateEmailTemplate(event)">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="emailLeadId">Lead ID *</label>
+                                        <input type="number" id="emailLeadId" class="form-control" placeholder="Enter lead ID" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="emailTemplateType">Template Type</label>
+                                        <select id="emailTemplateType" class="form-control">
+                                            <option value="introduction">Introduction</option>
+                                            <option value="value_proposition">Value Proposition</option>
+                                            <option value="follow_up">Follow Up</option>
+                                            <option value="review_request">Review Request</option>
+                                            <option value="partnership">Partnership</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="emailSenderName">Your Name *</label>
+                                        <input type="text" id="emailSenderName" class="form-control" placeholder="John Doe" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="emailSenderCompany">Your Company *</label>
+                                        <input type="text" id="emailSenderCompany" class="form-control" placeholder="Acme Corp" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="emailSenderTitle">Your Title</label>
+                                        <input type="text" id="emailSenderTitle" class="form-control" placeholder="Sales Manager">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="emailValueProp">Custom Value Proposition (optional)</label>
+                                    <textarea id="emailValueProp" class="form-control" rows="2" placeholder="What specific value do you offer?"></textarea>
+                                </div>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-magic"></i> Generate Email
+                                </button>
+                            </form>
+                            <div id="emailTemplateResult" style="margin-top: 2rem; display: none;">
+                                <h4 style="margin-bottom: 1rem;">Generated Email</h4>
+                                <div id="emailPreview" style="background: var(--bg-secondary); padding: 1.5rem; border-radius: 12px;"></div>
+                                <div style="margin-top: 1rem;">
+                                    <button class="btn btn-sm btn-outline" onclick="copyEmail()"><i class="fas fa-copy"></i> Copy to Clipboard</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Integrations Status Page -->
+                <div class="page" id="page-integrations">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-plug"></i> Integration Status</h3>
+                            <button class="btn btn-sm btn-outline" onclick="loadIntegrations()"><i class="fas fa-sync"></i> Refresh</button>
+                        </div>
+                        <div class="card-body">
+                            <div id="integrationsList">
+                                <div class="stats-grid" id="integrationsGrid"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-star"></i> New Features (v2.0)</h3>
+                        </div>
+                        <div class="card-body">
+                            <div id="featuresList">
+                                <div class="stats-grid" id="featuresGrid"></div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
-        </div>
-
-        <!-- Export Tab -->
-        <div class="tab-content" id="tab-export">
-            <div class="card">
-                <h2>Export Leads</h2>
-                <form id="export-form">
-                    <div class="form-group">
-                        <label for="export-format">Export Format</label>
-                        <select id="export-format">
-                            <option value="csv">CSV (Excel compatible)</option>
-                            <option value="json">JSON</option>
-                            <option value="cold_calling">Cold Calling Format</option>
-                        </select>
-                    </div>
-                    <h3>Filters</h3>
-                    <div class="form-group">
-                        <label>
-                            <input type="checkbox" id="filter-phone"> Only leads with phone numbers
-                        </label>
-                    </div>
-                    <div class="form-group">
-                        <label>
-                            <input type="checkbox" id="filter-website"> Only leads with websites
-                        </label>
-                    </div>
-                    <div class="form-group">
-                        <label>
-                            <input type="checkbox" id="filter-email"> Only leads with emails
-                        </label>
-                    </div>
-                    <button type="submit" class="btn btn-export">💾 Export Data</button>
-                </form>
-            </div>
-        </div>
+        </main>
     </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- jQuery (for DataTables) -->
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+
+    <!-- DataTables JS -->
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+
+    <!-- Main App JS -->
+    <script src="app.js"></script>
 
     <script>
-        const API_URL = 'http://localhost:8000/api';
-        let ws = null;
+        // Toggle feature card
+        function toggleFeature(card) {
+            card.classList.toggle('active');
+            const input = card.querySelector('input[type="hidden"]');
+            if (input) {
+                input.value = card.classList.contains('active') ? 'true' : 'false';
+            }
+        }
+
+        // Set locations for bulk scrape
+        function setLocations(locations) {
+            document.getElementById('bulkLocations').value = locations;
+        }
+
+        // Toggle sidebar on mobile
+        function toggleSidebar() {
+            document.querySelector('.sidebar').classList.toggle('open');
+        }
 
         // Initialize
-        document.addEventListener('DOMContentLoaded', () => {
-            loadStats();
-            connectWebSocket();
-            setInterval(loadStats, 30000); // Refresh every 30s
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('MapLeads Pro Dashboard loaded');
         });
-
-        // Tab switching
-        function showTab(tabName) {
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-
-            event.target.classList.add('active');
-            document.getElementById(`tab-${tabName}`).classList.add('active');
-
-            if (tabName === 'jobs') loadJobs();
-            if (tabName === 'leads') loadLeads();
-        }
-
-        // Load stats
-        async function loadStats() {
-            try {
-                const response = await fetch(`${API_URL}/stats`);
-                const stats = await response.json();
-
-                document.getElementById('stat-total-leads').textContent = stats.total_leads.toLocaleString();
-                document.getElementById('stat-with-phone').textContent = stats.leads_with_phone.toLocaleString();
-                document.getElementById('stat-with-website').textContent = stats.leads_with_website.toLocaleString();
-                document.getElementById('stat-avg-quality').textContent = stats.average_quality_score.toFixed(1) + '%';
-            } catch (error) {
-                console.error('Error loading stats:', error);
-            }
-        }
-
-        // Load jobs
-        async function loadJobs() {
-            try {
-                const response = await fetch(`${API_URL}/jobs?limit=20`);
-                const jobs = await response.json();
-
-                const container = document.getElementById('jobs-list');
-                container.innerHTML = `
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Query</th>
-                                <th>Status</th>
-                                <th>Progress</th>
-                                <th>Started</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${jobs.map(job => `
-                                <tr>
-                                    <td>#${job.id}</td>
-                                    <td>${job.search_query}</td>
-                                    <td><span class="badge badge-${getStatusColor(job.status)}">${job.status}</span></td>
-                                    <td>
-                                        <div>${job.leads_scraped} / ${job.leads_target}</div>
-                                        <div class="progress">
-                                            <div class="progress-bar" style="width: ${(job.leads_scraped / job.leads_target * 100)}%"></div>
-                                        </div>
-                                    </td>
-                                    <td>${new Date(job.started_at).toLocaleString()}</td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                `;
-            } catch (error) {
-                console.error('Error loading jobs:', error);
-            }
-        }
-
-        // Load leads
-        async function loadLeads() {
-            try {
-                const response = await fetch(`${API_URL}/leads?limit=50`);
-                const leads = await response.json();
-
-                const container = document.getElementById('leads-list');
-                container.innerHTML = `
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <th>Business Name</th>
-                                <th>City</th>
-                                <th>Phone</th>
-                                <th>Category</th>
-                                <th>Quality</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${leads.map(lead => `
-                                <tr>
-                                    <td><strong>${lead.business_name}</strong></td>
-                                    <td>${lead.city || '-'}</td>
-                                    <td>${lead.phone || '-'}</td>
-                                    <td>${lead.category || '-'}</td>
-                                    <td><span class="badge badge-${getQualityColor(lead.data_quality_score)}">${lead.data_quality_score}%</span></td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                `;
-            } catch (error) {
-                console.error('Error loading leads:', error);
-            }
-        }
-
-        // Start scrape
-        document.getElementById('scrape-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
-
-            const data = {
-                search_query: document.getElementById('search-query').value,
-                location: document.getElementById('location').value || null,
-                max_results: parseInt(document.getElementById('max-results').value),
-                use_proxies: document.getElementById('use-proxies').checked
-            };
-
-            try {
-                const response = await fetch(`${API_URL}/scrape`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
-
-                const job = await response.json();
-                showNotification(`Scraping started! Job #${job.id}`, 'success');
-
-                // Switch to jobs tab
-                setTimeout(() => {
-                    document.querySelectorAll('.tab')[1].click();
-                }, 1000);
-
-            } catch (error) {
-                showNotification('Error starting scrape: ' + error.message, 'error');
-            }
-        });
-
-        // Export
-        document.getElementById('export-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
-
-            const filters = {};
-            if (document.getElementById('filter-phone').checked) filters.has_phone = true;
-            if (document.getElementById('filter-website').checked) filters.has_website = true;
-            if (document.getElementById('filter-email').checked) filters.has_email = true;
-
-            const data = {
-                format: document.getElementById('export-format').value,
-                filters: filters
-            };
-
-            try {
-                const response = await fetch(`${API_URL}/export`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
-
-                const result = await response.json();
-                showNotification(`Export successful: ${result.filepath}`, 'success');
-
-            } catch (error) {
-                showNotification('Export failed: ' + error.message, 'error');
-            }
-        });
-
-        // WebSocket
-        function connectWebSocket() {
-            ws = new WebSocket('ws://localhost:8000/ws');
-
-            ws.onmessage = (event) => {
-                const message = JSON.parse(event.data);
-
-                if (message.type === 'job_completed') {
-                    showNotification(`Job #${message.job_id} completed with ${message.results_count} results!`, 'success');
-                    loadStats();
-                    loadJobs();
-                }
-            };
-
-            ws.onerror = () => console.log('WebSocket error');
-            ws.onclose = () => setTimeout(connectWebSocket, 5000);
-        }
-
-        // Helpers
-        function getStatusColor(status) {
-            const colors = {
-                completed: 'success',
-                running: 'info',
-                failed: 'error',
-                pending: 'warning'
-            };
-            return colors[status] || 'info';
-        }
-
-        function getQualityColor(score) {
-            if (score >= 80) return 'success';
-            if (score >= 50) return 'warning';
-            return 'error';
-        }
-
-        function showNotification(message, type = 'info') {
-            const notification = document.createElement('div');
-            notification.className = 'notification';
-            notification.textContent = message;
-            document.body.appendChild(notification);
-
-            setTimeout(() => notification.remove(), 5000);
-        }
     </script>
 </body>
 </html>

@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "MapLeads Pro - Google Maps Lead Extractor",
+  "version": "2.0.0",
+  "description": "Extract business leads from Google Maps with one click. Get emails, phone numbers, social media, and more.",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://www.google.com/maps/*",
+    "https://maps.google.com/*",
+    "http://localhost:9000/*",
+    "http://127.0.0.1:9000/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.google.com/maps/*", "https://maps.google.com/*"],
+      "js": ["content.js"],
+      "css": ["content.css"]
+    }
+  ],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "options_page": "options.html"
+}

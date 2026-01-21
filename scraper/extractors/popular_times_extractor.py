@@ -1,11 +1,10 @@
 """Popular Times data extraction module for Google Maps."""
-import asyncio
 import re
 from typing import Dict, List, Optional
 from loguru import logger
 
 try:
-    from playwright.async_api import Page
+    from playwright.sync_api import Page
 except ImportError:
     Page = None
 
@@ -16,7 +15,7 @@ class PopularTimesExtractor:
     DAYS_OF_WEEK = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
     HOURS = list(range(6, 24)) + list(range(0, 6))  # 6 AM to 5 AM next day
 
-    async def extract_popular_times(self, page: Page) -> Dict:
+    def extract_popular_times(self, page: Page) -> Dict:
         """
         Extract Popular Times data from a Google Maps business listing.
 
@@ -39,14 +38,15 @@ class PopularTimesExtractor:
         }
 
         try:
+            import time
             # Check if Popular Times section exists
-            popular_times_section = await page.query_selector(
+            popular_times_section = page.query_selector(
                 'div[aria-label*="Popular times"], div[class*="popular-times"]'
             )
 
             if not popular_times_section:
                 # Try alternative selectors
-                popular_times_section = await page.query_selector(
+                popular_times_section = page.query_selector(
                     'div[jsaction*="pane.popularTimes"]'
                 )
 
@@ -57,13 +57,13 @@ class PopularTimesExtractor:
             result["has_popular_times"] = True
 
             # Extract live busyness if available
-            await self._extract_live_busyness(page, result)
+            self._extract_live_busyness(page, result)
 
             # Extract typical time spent
-            await self._extract_time_spent(page, result)
+            self._extract_time_spent(page, result)
 
             # Extract hourly data for each day
-            await self._extract_hourly_data(page, result)
+            self._extract_hourly_data(page, result)
 
             # Calculate busiest/quietest times
             self._calculate_extremes(result)
@@ -73,7 +73,7 @@ class PopularTimesExtractor:
 
         return result
 
-    async def _extract_live_busyness(self, page: Page, result: Dict):
+    def _extract_live_busyness(self, page: Page, result: Dict):
         """Extract current live busyness."""
         try:
             # Live busyness indicator
@@ -87,9 +87,9 @@ class PopularTimesExtractor:
 
             for selector in live_selectors:
                 try:
-                    element = await page.query_selector(selector)
+                    element = page.query_selector(selector)
                     if element:
-                        text = await element.inner_text()
+                        text = element.inner_text()
 
                         # Parse busyness level
                         if "not too busy" in text.lower():
@@ -116,9 +116,9 @@ class PopularTimesExtractor:
                     continue
 
             # Try to extract percentage from aria-label
-            busyness_bar = await page.query_selector('div[role="img"][aria-label*="%"]')
+            busyness_bar = page.query_selector('div[role="img"][aria-label*="%"]')
             if busyness_bar:
-                aria = await busyness_bar.get_attribute("aria-label")
+                aria = busyness_bar.get_attribute("aria-label")
                 match = re.search(r"(\d+)\s*%", aria)
                 if match:
                     result["live_busyness"] = int(match.group(1))
@@ -126,7 +126,7 @@ class PopularTimesExtractor:
         except Exception as e:
             logger.debug(f"Error extracting live busyness: {e}")
 
-    async def _extract_time_spent(self, page: Page, result: Dict):
+    def _extract_time_spent(self, page: Page, result: Dict):
         """Extract typical time spent at location."""
         try:
             time_spent_selectors = [
@@ -137,9 +137,9 @@ class PopularTimesExtractor:
 
             for selector in time_spent_selectors:
                 try:
-                    element = await page.query_selector(selector)
+                    element = page.query_selector(selector)
                     if element:
-                        text = await element.inner_text()
+                        text = element.inner_text()
 
                         # Parse time spent
                         # Examples: "People typically spend 15-30 min", "1-2 hr"
@@ -157,15 +157,16 @@ class PopularTimesExtractor:
         except Exception as e:
             logger.debug(f"Error extracting time spent: {e}")
 
-    async def _extract_hourly_data(self, page: Page, result: Dict):
+    def _extract_hourly_data(self, page: Page, result: Dict):
         """Extract hourly busyness data for each day."""
         try:
+            import time as time_module
             # Initialize data structure
             for day in self.DAYS_OF_WEEK:
                 result["popular_times"][day] = {}
 
             # Try to find day tabs/buttons
-            day_buttons = await page.query_selector_all(
+            day_buttons = page.query_selector_all(
                 'button[aria-label*="day"], div[role="tab"]'
             )
 
@@ -178,11 +179,11 @@ class PopularTimesExtractor:
                     day_name = self.DAYS_OF_WEEK[i]
 
                     try:
-                        await day_button.click()
-                        await asyncio.sleep(0.5)
+                        day_button.click()
+                        time_module.sleep(0.5)
 
                         # Extract bars for this day
-                        bars = await page.query_selector_all(
+                        bars = page.query_selector_all(
                             'div[role="img"][aria-label*="%"], div[class*="bar"]'
                         )
 
@@ -191,7 +192,7 @@ class PopularTimesExtractor:
                                 break
 
                             try:
-                                aria = await bar.get_attribute("aria-label")
+                                aria = bar.get_attribute("aria-label")
                                 if aria:
                                     # Parse "X% busy at Y AM/PM"
                                     match = re.search(
@@ -219,21 +220,21 @@ class PopularTimesExtractor:
 
             else:
                 # Alternative: Extract all visible bars
-                await self._extract_visible_bars(page, result)
+                self._extract_visible_bars(page, result)
 
         except Exception as e:
             logger.debug(f"Error extracting hourly data: {e}")
 
-    async def _extract_visible_bars(self, page: Page, result: Dict):
+    def _extract_visible_bars(self, page: Page, result: Dict):
         """Extract busyness from visible bar graphs."""
         try:
             # Find all bar elements
-            bars = await page.query_selector_all(
+            bars = page.query_selector_all(
                 'div[class*="bar"], div[style*="height"]'
             )
 
             # Try to determine current day
-            current_day = await page.evaluate('''
+            current_day = page.evaluate('''
                 () => {
                     const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
                     return days[new Date().getDay()];
@@ -246,7 +247,7 @@ class PopularTimesExtractor:
             for i, bar in enumerate(bars[:24]):
                 try:
                     # Get height percentage from style
-                    style = await bar.get_attribute("style")
+                    style = bar.get_attribute("style")
                     if style:
                         height_match = re.search(r"height:\s*(\d+)", style)
                         if height_match:
@@ -255,7 +256,7 @@ class PopularTimesExtractor:
                             result["popular_times"][current_day][6 + i] = min(height, 100)
 
                     # Try aria-label
-                    aria = await bar.get_attribute("aria-label")
+                    aria = bar.get_attribute("aria-label")
                     if aria:
                         percent_match = re.search(r"(\d+)\s*%", aria)
                         if percent_match:
@@ -311,14 +312,14 @@ class PopularTimesExtractor:
         else:
             return f"{hour - 12} PM"
 
-    async def get_best_times_to_visit(self, page: Page) -> Dict:
+    def get_best_times_to_visit(self, page: Page) -> Dict:
         """
         Get recommended best times to visit based on Popular Times.
 
         Returns:
             Dict with recommendations
         """
-        popular_times = await self.extract_popular_times(page)
+        popular_times = self.extract_popular_times(page)
 
         recommendations = {
             "best_times": [],

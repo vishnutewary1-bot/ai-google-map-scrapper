@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MapLeads Pro</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            width: 380px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 500px;
+        }
+
+        .container {
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 20px;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            font-size: 12px;
+            opacity: 0.9;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        .card h2 {
+            font-size: 16px;
+            color: #333;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #4CAF50;
+        }
+
+        .status-indicator.offline {
+            background: #f44336;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+            margin-bottom: 10px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #f5f5f5;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .extraction-options {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .option:hover {
+            background: #e9ecef;
+        }
+
+        .option input {
+            accent-color: #667eea;
+        }
+
+        .option label {
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .stat {
+            text-align: center;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat-label {
+            font-size: 11px;
+            color: #666;
+        }
+
+        .lead-preview {
+            max-height: 200px;
+            overflow-y: auto;
+            margin-bottom: 15px;
+        }
+
+        .lead-item {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .lead-item:last-child {
+            border-bottom: none;
+        }
+
+        .lead-name {
+            font-weight: 500;
+            font-size: 13px;
+        }
+
+        .lead-info {
+            font-size: 11px;
+            color: #666;
+        }
+
+        .lead-badges {
+            display: flex;
+            gap: 4px;
+        }
+
+        .badge {
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 500;
+        }
+
+        .badge-email {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .badge-phone {
+            background: #e8f5e9;
+            color: #388e3c;
+        }
+
+        .badge-social {
+            background: #fff3e0;
+            color: #f57c00;
+        }
+
+        .progress-bar {
+            height: 4px;
+            background: #e0e0e0;
+            border-radius: 2px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            transition: width 0.3s;
+        }
+
+        .message {
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            font-size: 12px;
+        }
+
+        .message.success {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        .message.error {
+            background: #ffebee;
+            color: #c62828;
+        }
+
+        .message.info {
+            background: #e3f2fd;
+            color: #1565c0;
+        }
+
+        .footer {
+            text-align: center;
+            color: rgba(255,255,255,0.7);
+            font-size: 11px;
+            margin-top: 10px;
+        }
+
+        .footer a {
+            color: white;
+            text-decoration: none;
+        }
+
+        .settings-link {
+            display: inline-block;
+            margin-top: 10px;
+            color: #667eea;
+            font-size: 12px;
+            text-decoration: none;
+        }
+
+        .settings-link:hover {
+            text-decoration: underline;
+        }
+
+        #not-on-maps {
+            display: none;
+            text-align: center;
+            padding: 40px 20px;
+            color: white;
+        }
+
+        #not-on-maps h2 {
+            margin-bottom: 10px;
+        }
+
+        #not-on-maps p {
+            opacity: 0.8;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>MapLeads Pro</h1>
+            <p>Extract business leads from Google Maps</p>
+        </div>
+
+        <div id="not-on-maps">
+            <h2>Navigate to Google Maps</h2>
+            <p>Open Google Maps and search for businesses to start extracting leads.</p>
+            <br>
+            <button class="btn btn-primary" id="open-maps">Open Google Maps</button>
+        </div>
+
+        <div id="main-content">
+            <div class="card">
+                <h2>
+                    <span class="status-indicator" id="server-status"></span>
+                    Server Connection
+                </h2>
+                <div id="connection-message" class="message info">
+                    Checking connection to MapLeads Pro server...
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Extraction Options</h2>
+                <div class="extraction-options">
+                    <label class="option">
+                        <input type="checkbox" id="opt-email" checked>
+                        <span>Emails</span>
+                    </label>
+                    <label class="option">
+                        <input type="checkbox" id="opt-phone" checked>
+                        <span>Phone</span>
+                    </label>
+                    <label class="option">
+                        <input type="checkbox" id="opt-social" checked>
+                        <span>Social</span>
+                    </label>
+                    <label class="option">
+                        <input type="checkbox" id="opt-reviews">
+                        <span>Reviews</span>
+                    </label>
+                    <label class="option">
+                        <input type="checkbox" id="opt-photos">
+                        <span>Photos</span>
+                    </label>
+                    <label class="option">
+                        <input type="checkbox" id="opt-times">
+                        <span>Popular Times</span>
+                    </label>
+                </div>
+
+                <button class="btn btn-primary" id="extract-current">
+                    Extract Current Business
+                </button>
+                <button class="btn btn-secondary" id="extract-all">
+                    Extract All Visible (0)
+                </button>
+            </div>
+
+            <div class="card" id="results-card" style="display: none;">
+                <h2>Extracted Leads</h2>
+
+                <div class="progress-bar" id="progress-container" style="display: none;">
+                    <div class="progress-fill" id="progress-fill"></div>
+                </div>
+
+                <div class="stats">
+                    <div class="stat">
+                        <div class="stat-value" id="total-count">0</div>
+                        <div class="stat-label">Total</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" id="email-count">0</div>
+                        <div class="stat-label">With Email</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" id="phone-count">0</div>
+                        <div class="stat-label">With Phone</div>
+                    </div>
+                </div>
+
+                <div class="lead-preview" id="lead-preview"></div>
+
+                <button class="btn btn-primary" id="send-to-server">
+                    Send to MapLeads Pro
+                </button>
+                <button class="btn btn-secondary" id="export-csv">
+                    Export as CSV
+                </button>
+            </div>
+
+            <a href="options.html" target="_blank" class="settings-link">Settings</a>
+        </div>
+
+        <div class="footer">
+            <p>MapLeads Pro v2.0.0</p>
+            <p><a href="http://localhost:9000" target="_blank">Open Dashboard</a></p>
+        </div>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>

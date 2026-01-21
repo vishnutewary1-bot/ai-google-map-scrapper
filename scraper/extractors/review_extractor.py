@@ -1,12 +1,11 @@
-"""Review extraction module for Google Maps scraper."""
-import asyncio
+"""Review extraction module for Google Maps scraper - Enhanced version."""
 import re
 from typing import List, Dict, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from loguru import logger
 
 try:
-    from playwright.async_api import Page
+    from playwright.sync_api import Page
 except ImportError:
     Page = None
 
@@ -17,7 +16,7 @@ class ReviewExtractor:
     def __init__(self):
         self.reviews_scraped = 0
 
-    async def extract_reviews(
+    def extract_reviews(
         self,
         page: Page,
         max_reviews: int = 50,
@@ -43,17 +42,17 @@ class ReviewExtractor:
                 return reviews
 
             # Click on reviews tab/section to expand
-            await self._open_reviews_section(page)
+            self._open_reviews_section(page)
 
             # Sort reviews if needed
             if sort_by != "relevant":
-                await self._sort_reviews(page, sort_by)
+                self._sort_reviews(page, sort_by)
 
             # Scroll to load more reviews
-            await self._scroll_reviews(page, max_reviews)
+            self._scroll_reviews(page, max_reviews)
 
             # Extract review elements
-            reviews = await self._extract_review_data(page, max_reviews)
+            reviews = self._extract_review_data(page, max_reviews)
 
             self.reviews_scraped += len(reviews)
             logger.info(f"Extracted {len(reviews)} reviews")
@@ -63,9 +62,10 @@ class ReviewExtractor:
 
         return reviews
 
-    async def _open_reviews_section(self, page: Page) -> bool:
+    def _open_reviews_section(self, page: Page) -> bool:
         """Open the reviews section/tab."""
         try:
+            import time
             # Try clicking on review count to open reviews
             review_selectors = [
                 'button[aria-label*="review"]',
@@ -77,17 +77,17 @@ class ReviewExtractor:
 
             for selector in review_selectors:
                 try:
-                    element = await page.query_selector(selector)
+                    element = page.query_selector(selector)
                     if element:
-                        await element.click()
-                        await asyncio.sleep(2)
+                        element.click()
+                        time.sleep(2)
                         logger.debug("Opened reviews section")
                         return True
                 except:
                     continue
 
             # Try scrolling down to reviews section
-            await page.evaluate('''
+            page.evaluate('''
                 const reviewsSection = document.querySelector('[aria-label*="Review"]');
                 if (reviewsSection) reviewsSection.scrollIntoView();
             ''')
@@ -98,17 +98,18 @@ class ReviewExtractor:
             logger.debug(f"Error opening reviews section: {e}")
             return False
 
-    async def _sort_reviews(self, page: Page, sort_by: str) -> bool:
+    def _sort_reviews(self, page: Page, sort_by: str) -> bool:
         """Sort reviews by specified criteria."""
         try:
+            import time
             # Find and click sort button
-            sort_button = await page.query_selector('button[aria-label*="Sort"]')
+            sort_button = page.query_selector('button[aria-label*="Sort"]')
             if not sort_button:
-                sort_button = await page.query_selector('button[data-value="Sort"]')
+                sort_button = page.query_selector('button[data-value="Sort"]')
 
             if sort_button:
-                await sort_button.click()
-                await asyncio.sleep(1)
+                sort_button.click()
+                time.sleep(1)
 
                 # Select sort option
                 sort_map = {
@@ -119,11 +120,11 @@ class ReviewExtractor:
                 }
 
                 sort_text = sort_map.get(sort_by, "Newest")
-                sort_option = await page.query_selector(f'div[role="menuitem"]:has-text("{sort_text}")')
+                sort_option = page.query_selector(f'div[role="menuitem"]:has-text("{sort_text}")')
 
                 if sort_option:
-                    await sort_option.click()
-                    await asyncio.sleep(2)
+                    sort_option.click()
+                    time.sleep(2)
                     logger.debug(f"Sorted reviews by: {sort_by}")
                     return True
 
@@ -132,16 +133,17 @@ class ReviewExtractor:
 
         return False
 
-    async def _scroll_reviews(self, page: Page, target_count: int) -> int:
+    def _scroll_reviews(self, page: Page, target_count: int) -> int:
         """Scroll the reviews panel to load more reviews."""
         try:
+            import time
             # Find the scrollable reviews container
-            scroll_container = await page.query_selector(
+            scroll_container = page.query_selector(
                 'div[role="main"] div[tabindex="-1"]'
             )
 
             if not scroll_container:
-                scroll_container = await page.query_selector(
+                scroll_container = page.query_selector(
                     'div.m6QErb[aria-label]'
                 )
 
@@ -151,7 +153,7 @@ class ReviewExtractor:
 
             while current_count < target_count and scroll_attempts < max_attempts:
                 # Scroll down
-                await page.evaluate('''
+                page.evaluate('''
                     (container) => {
                         if (container) {
                             container.scrollTop = container.scrollHeight;
@@ -163,10 +165,10 @@ class ReviewExtractor:
                     }
                 ''', scroll_container)
 
-                await asyncio.sleep(1.5)
+                time.sleep(1.5)
 
                 # Count current reviews
-                review_elements = await page.query_selector_all(
+                review_elements = page.query_selector_all(
                     'div[data-review-id], div[class*="review"], div[aria-label*="stars"]'
                 )
                 current_count = len(review_elements)
@@ -174,7 +176,7 @@ class ReviewExtractor:
                 scroll_attempts += 1
 
                 # Check if we've reached the end
-                end_message = await page.query_selector('span:has-text("No more reviews")')
+                end_message = page.query_selector('span:has-text("No more reviews")')
                 if end_message:
                     break
 
@@ -185,7 +187,7 @@ class ReviewExtractor:
             logger.debug(f"Error scrolling reviews: {e}")
             return 0
 
-    async def _extract_review_data(self, page: Page, max_reviews: int) -> List[Dict]:
+    def _extract_review_data(self, page: Page, max_reviews: int) -> List[Dict]:
         """Extract data from individual review elements."""
         reviews = []
 
@@ -199,13 +201,13 @@ class ReviewExtractor:
 
             review_elements = []
             for selector in review_selectors:
-                review_elements = await page.query_selector_all(selector)
+                review_elements = page.query_selector_all(selector)
                 if review_elements:
                     break
 
             for i, element in enumerate(review_elements[:max_reviews]):
                 try:
-                    review = await self._parse_single_review(element)
+                    review = self._parse_single_review(element)
                     if review:
                         review["index"] = i + 1
                         reviews.append(review)
@@ -218,27 +220,40 @@ class ReviewExtractor:
 
         return reviews
 
-    async def _parse_single_review(self, element) -> Optional[Dict]:
-        """Parse a single review element."""
+    def _parse_single_review(self, element) -> Optional[Dict]:
+        """Parse a single review element - ENHANCED VERSION with all fields."""
         try:
+            import time
             review = {
+                # Reviewer info
                 "reviewer_name": None,
                 "reviewer_profile_url": None,
+                "reviewer_photo": None,
                 "reviewer_reviews_count": None,
                 "reviewer_photos_count": None,
+                "reviewer_level": None,  # Local Guide level
+                "reviewer_is_local_guide": False,
+
+                # Review content
                 "rating": None,
                 "review_text": None,
                 "review_date": None,
                 "review_date_relative": None,
+                "review_language": None,
+                "is_translated": False,
+
+                # Owner response
                 "owner_response": None,
                 "owner_response_date": None,
+
+                # Media & metadata
                 "review_photos": [],
                 "helpful_count": 0,
-                "review_id": None
+                "review_id": None,
             }
 
             # Get review ID
-            review_id = await element.get_attribute('data-review-id')
+            review_id = element.get_attribute('data-review-id')
             if review_id:
                 review["review_id"] = review_id
 
@@ -251,13 +266,51 @@ class ReviewExtractor:
             ]
             for selector in name_selectors:
                 try:
-                    name_elem = await element.query_selector(selector)
+                    name_elem = element.query_selector(selector)
                     if name_elem:
-                        review["reviewer_name"] = await name_elem.inner_text()
+                        review["reviewer_name"] = name_elem.inner_text()
                         # Try to get profile URL
-                        href = await name_elem.get_attribute('href')
+                        href = name_elem.get_attribute('href')
                         if href:
                             review["reviewer_profile_url"] = href
+                        break
+                except:
+                    continue
+
+            # Extract reviewer photo
+            photo_selectors = [
+                'button[class*="al6Kxe"] img',
+                'img[class*="NBa7we"]',
+                'a[href*="contrib"] img',
+                'div[class*="avatar"] img',
+            ]
+            for selector in photo_selectors:
+                try:
+                    photo_elem = element.query_selector(selector)
+                    if photo_elem:
+                        src = photo_elem.get_attribute('src')
+                        if src and 'googleusercontent' in src:
+                            # Get higher resolution version
+                            review["reviewer_photo"] = re.sub(r'=s\d+-', '=s100-', src)
+                            break
+                except:
+                    continue
+
+            # Extract Local Guide level
+            guide_selectors = [
+                'span[class*="RfnDt"]:has-text("Local Guide")',
+                'div[class*="guide-level"]',
+                'span:has-text("Level")',
+            ]
+            for selector in guide_selectors:
+                try:
+                    guide_elem = element.query_selector(selector)
+                    if guide_elem:
+                        text = guide_elem.inner_text()
+                        review["reviewer_is_local_guide"] = True
+                        level_match = re.search(r'Level\s*(\d+)', text, re.IGNORECASE)
+                        if level_match:
+                            review["reviewer_level"] = int(level_match.group(1))
                         break
                 except:
                     continue
@@ -270,9 +323,9 @@ class ReviewExtractor:
             ]
             for selector in rating_selectors:
                 try:
-                    rating_elem = await element.query_selector(selector)
+                    rating_elem = element.query_selector(selector)
                     if rating_elem:
-                        aria_label = await rating_elem.get_attribute('aria-label')
+                        aria_label = rating_elem.get_attribute('aria-label')
                         if aria_label:
                             # Extract number from "5 stars" or "4 star rating"
                             match = re.search(r'(\d+)', aria_label)
@@ -291,9 +344,9 @@ class ReviewExtractor:
             ]
             for selector in text_selectors:
                 try:
-                    text_elem = await element.query_selector(selector)
+                    text_elem = element.query_selector(selector)
                     if text_elem:
-                        text = await text_elem.inner_text()
+                        text = text_elem.inner_text()
                         if text and len(text) > 5:
                             review["review_text"] = text.strip()
                             break
@@ -303,20 +356,38 @@ class ReviewExtractor:
             # Try expanding "More" button if review is truncated
             if review["review_text"] and "..." in review["review_text"]:
                 try:
-                    more_btn = await element.query_selector('button:has-text("More")')
+                    more_btn = element.query_selector('button:has-text("More")')
                     if more_btn:
-                        await more_btn.click()
-                        await asyncio.sleep(0.5)
+                        more_btn.click()
+                        time.sleep(0.5)
                         # Re-extract text
                         for selector in text_selectors:
-                            text_elem = await element.query_selector(selector)
+                            text_elem = element.query_selector(selector)
                             if text_elem:
-                                text = await text_elem.inner_text()
+                                text = text_elem.inner_text()
                                 if text:
                                     review["review_text"] = text.strip()
                                     break
                 except:
                     pass
+
+            # Check if review is translated
+            try:
+                translated_elem = element.query_selector('span:has-text("Translated")')
+                if translated_elem:
+                    review["is_translated"] = True
+            except:
+                pass
+
+            # Extract original language indicator
+            try:
+                lang_elem = element.query_selector('span[lang]')
+                if lang_elem:
+                    lang = lang_elem.get_attribute('lang')
+                    if lang:
+                        review["review_language"] = lang[:10]
+            except:
+                pass
 
             # Extract review date
             date_selectors = [
@@ -328,9 +399,9 @@ class ReviewExtractor:
             ]
             for selector in date_selectors:
                 try:
-                    date_elem = await element.query_selector(selector)
+                    date_elem = element.query_selector(selector)
                     if date_elem:
-                        date_text = await date_elem.inner_text()
+                        date_text = date_elem.inner_text()
                         if date_text:
                             review["review_date_relative"] = date_text.strip()
                             review["review_date"] = self._parse_relative_date(date_text)
@@ -346,14 +417,19 @@ class ReviewExtractor:
             ]
             for selector in response_selectors:
                 try:
-                    response_elem = await element.query_selector(selector)
+                    response_elem = element.query_selector(selector)
                     if response_elem:
-                        response_text = await response_elem.inner_text()
+                        response_text = response_elem.inner_text()
                         if "Response from" in response_text:
                             # Split to get actual response
                             parts = response_text.split('\n')
                             if len(parts) > 1:
                                 review["owner_response"] = '\n'.join(parts[1:]).strip()
+
+                            # Try to get response date
+                            date_match = re.search(r'(\d+\s*(day|week|month|year)s?\s*ago)', response_text)
+                            if date_match:
+                                review["owner_response_date"] = self._parse_relative_date(date_match.group(1))
                             break
                 except:
                     continue
@@ -366,9 +442,9 @@ class ReviewExtractor:
             ]
             for selector in stats_selectors:
                 try:
-                    stats_elem = await element.query_selector(selector)
+                    stats_elem = element.query_selector(selector)
                     if stats_elem:
-                        stats_text = await stats_elem.inner_text()
+                        stats_text = stats_elem.inner_text()
                         # Parse "15 reviews · 5 photos"
                         reviews_match = re.search(r'(\d+)\s*review', stats_text)
                         photos_match = re.search(r'(\d+)\s*photo', stats_text)
@@ -380,13 +456,33 @@ class ReviewExtractor:
                 except:
                     continue
 
-            # Extract review photos
+            # Extract review photos (with higher resolution)
             try:
-                photo_elems = await element.query_selector_all('button[aria-label*="Photo"] img')
+                photo_elems = element.query_selector_all('button[aria-label*="Photo"] img, div[class*="review-photo"] img')
                 for photo_elem in photo_elems[:5]:  # Limit to 5 photos
-                    src = await photo_elem.get_attribute('src')
-                    if src:
-                        review["review_photos"].append(src)
+                    src = photo_elem.get_attribute('src')
+                    if src and 'googleusercontent' in src:
+                        # Get higher resolution version
+                        high_res = re.sub(r'=s\d+-', '=s400-', src)
+                        high_res = re.sub(r'=w\d+-h\d+', '=w400-h300', high_res)
+                        review["review_photos"].append(high_res)
+            except:
+                pass
+
+            # Extract helpful count (likes)
+            try:
+                helpful_selectors = [
+                    'button[aria-label*="helpful"]',
+                    'span:has-text("found this helpful")',
+                ]
+                for selector in helpful_selectors:
+                    helpful_elem = element.query_selector(selector)
+                    if helpful_elem:
+                        text = helpful_elem.get_attribute('aria-label') or helpful_elem.inner_text()
+                        match = re.search(r'(\d+)', text)
+                        if match:
+                            review["helpful_count"] = int(match.group(1))
+                        break
             except:
                 pass
 
@@ -403,8 +499,6 @@ class ReviewExtractor:
     def _parse_relative_date(self, relative_date: str) -> Optional[str]:
         """Convert relative date string to ISO format."""
         try:
-            from datetime import datetime, timedelta
-
             now = datetime.now()
             relative_date = relative_date.lower().strip()
 
@@ -460,7 +554,7 @@ class ReviewExtractor:
 
         return None
 
-    async def get_review_summary(self, page: Page) -> Dict:
+    def get_review_summary(self, page: Page) -> Dict:
         """
         Get review summary statistics from a business listing.
 
@@ -489,9 +583,9 @@ class ReviewExtractor:
 
             for selector in review_count_selectors:
                 try:
-                    elem = await page.query_selector(selector)
+                    elem = page.query_selector(selector)
                     if elem:
-                        text = await elem.inner_text()
+                        text = elem.inner_text()
                         match = re.search(r'([\d,]+)', text.replace(',', ''))
                         if match:
                             summary["total_reviews"] = int(match.group(1))
@@ -508,9 +602,9 @@ class ReviewExtractor:
 
             for selector in rating_selectors:
                 try:
-                    elem = await page.query_selector(selector)
+                    elem = page.query_selector(selector)
                     if elem:
-                        text = await elem.inner_text()
+                        text = elem.inner_text()
                         match = re.search(r'([\d.]+)', text)
                         if match:
                             summary["average_rating"] = float(match.group(1))
@@ -520,9 +614,9 @@ class ReviewExtractor:
 
             # Try to extract rating distribution (if visible)
             try:
-                distribution_rows = await page.query_selector_all('tr[aria-label*="star"]')
+                distribution_rows = page.query_selector_all('tr[aria-label*="star"]')
                 for row in distribution_rows:
-                    label = await row.get_attribute('aria-label')
+                    label = row.get_attribute('aria-label')
                     if label:
                         # Parse "5 stars, 234 reviews, 45%"
                         stars_match = re.search(r'(\d)\s*star', label)

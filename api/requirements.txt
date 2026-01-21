@@ -1,4 +1,14 @@
+# Core FastAPI
 fastapi>=0.109.0
 pydantic>=2.5.0
+
+# Database (Vercel Postgres support)
+sqlalchemy>=2.0.25
+psycopg2-binary>=2.9.9
+
+# Google Sheets Integration
 gspread>=6.0.0
 google-auth>=2.27.0
+
+# Rate Limiting
+slowapi>=0.1.9

@@ -1,6 +1,7 @@
 """Database connection and session management."""
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.pool import QueuePool, NullPool
 from contextlib import contextmanager
 from config.settings import settings
 from database.models import Base
@@ -15,23 +16,29 @@ class DatabaseManager:
         self.SessionLocal = None
 
     def initialize(self):
-        """Initialize database connection."""
+        """Initialize database connection with proper connection pooling."""
         try:
             import os
             # Create data directory for SQLite if needed
             if settings.db_type.lower() == "sqlite":
                 os.makedirs("data", exist_ok=True)
+                # SQLite doesn't support connection pooling in the same way
                 self.engine = create_engine(
                     settings.database_url,
                     connect_args={"check_same_thread": False},
+                    poolclass=NullPool,  # SQLite works better with NullPool
                     echo=False
                 )
             else:
+                # PostgreSQL/MySQL with proper connection pooling
                 self.engine = create_engine(
                     settings.database_url,
-                    pool_pre_ping=True,
-                    pool_size=10,
-                    max_overflow=20,
+                    poolclass=QueuePool,
+                    pool_pre_ping=True,  # Verify connections before use
+                    pool_size=5,  # Base pool size
+                    max_overflow=10,  # Additional connections when pool is exhausted
+                    pool_recycle=3600,  # Recycle connections after 1 hour
+                    pool_timeout=30,  # Wait up to 30s for available connection
                     echo=False
                 )
             self.SessionLocal = sessionmaker(

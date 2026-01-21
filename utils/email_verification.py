@@ -225,7 +225,8 @@ class EmailVerifier:
                 try:
                     answers = dns.resolver.resolve(domain, 'MX')
                     return [str(r.exchange) for r in answers]
-                except:
+                except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.NoNameservers, dns.exception.Timeout) as e:
+                    logger.debug(f"MX resolution failed for {domain}: {e}")
                     return []
 
             mx_records = await loop.run_in_executor(None, resolve_mx)
@@ -238,7 +239,8 @@ class EmailVerifier:
                 try:
                     dns.resolver.resolve(domain, 'A')
                     return True
-                except:
+                except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.NoNameservers, dns.exception.Timeout) as e:
+                    logger.debug(f"A record resolution failed for {domain}: {e}")
                     return False
 
             has_a_record = await loop.run_in_executor(None, resolve_a)

@@ -21,6 +21,37 @@ except ImportError:
 from database import db_manager, BusinessLead
 
 
+def _fetch_leads_from_db(filters: Optional[Dict]) -> List[Dict]:
+    """
+    Shared helper to fetch leads from database.
+
+    Args:
+        filters: Optional filters (has_phone, has_email, min_quality_score, city)
+
+    Returns:
+        List of lead dictionaries
+    """
+    try:
+        with db_manager.get_session() as session:
+            query = session.query(BusinessLead)
+
+            if filters:
+                if filters.get("has_phone"):
+                    query = query.filter(BusinessLead.phone.isnot(None))
+                if filters.get("has_email"):
+                    query = query.filter(BusinessLead.email.isnot(None))
+                if filters.get("min_quality_score"):
+                    query = query.filter(BusinessLead.data_quality_score >= filters["min_quality_score"])
+                if filters.get("city"):
+                    query = query.filter(BusinessLead.city == filters["city"])
+
+            results = query.all()
+            return [lead.to_dict() for lead in results]
+    except Exception as e:
+        logger.error(f"Error fetching leads: {e}")
+        return []
+
+
 class HubSpotIntegration:
     """HubSpot CRM integration for pushing leads."""
 
@@ -234,26 +265,8 @@ class HubSpotIntegration:
             return None
 
     def _fetch_leads(self, filters: Optional[Dict]) -> List[Dict]:
-        """Fetch leads from database."""
-        try:
-            with db_manager.get_session() as session:
-                query = session.query(BusinessLead)
-
-                if filters:
-                    if filters.get("has_phone"):
-                        query = query.filter(BusinessLead.phone.isnot(None))
-                    if filters.get("has_email"):
-                        query = query.filter(BusinessLead.email.isnot(None))
-                    if filters.get("min_quality_score"):
-                        query = query.filter(BusinessLead.data_quality_score >= filters["min_quality_score"])
-                    if filters.get("city"):
-                        query = query.filter(BusinessLead.city == filters["city"])
-
-                results = query.all()
-                return [lead.to_dict() for lead in results]
-        except Exception as e:
-            logger.error(f"Error fetching leads: {e}")
-            return []
+        """Fetch leads from database using shared helper."""
+        return _fetch_leads_from_db(filters)
 
 
 class SalesforceIntegration:
@@ -453,24 +466,8 @@ class SalesforceIntegration:
         }
 
     def _fetch_leads(self, filters: Optional[Dict]) -> List[Dict]:
-        """Fetch leads from database."""
-        try:
-            with db_manager.get_session() as session:
-                query = session.query(BusinessLead)
-
-                if filters:
-                    if filters.get("has_phone"):
-                        query = query.filter(BusinessLead.phone.isnot(None))
-                    if filters.get("has_email"):
-                        query = query.filter(BusinessLead.email.isnot(None))
-                    if filters.get("min_quality_score"):
-                        query = query.filter(BusinessLead.data_quality_score >= filters["min_quality_score"])
-
-                results = query.all()
-                return [lead.to_dict() for lead in results]
-        except Exception as e:
-            logger.error(f"Error fetching leads: {e}")
-            return []
+        """Fetch leads from database using shared helper."""
+        return _fetch_leads_from_db(filters)
 
 
 class CRMManager:

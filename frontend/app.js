@@ -1,59 +1,47 @@
-// Configuration
+// MapLeads Pro v2.0 - Frontend Application
+// Updated for new modular API structure
+
 const API_URL = window.location.origin + '/api';
 const WS_URL = window.location.origin.replace('http', 'ws') + '/ws';
 
 let ws = null;
-let leadsDataTable = null;
-let jobsDataTable = null;
 let charts = {};
+let currentLeadsPage = 1;
+let leadsPerPage = 50;
+let totalLeads = 0;
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('Dashboard initializing...');
-
-    // Load initial data
+    console.log('MapLeads Pro v2.0 initializing...');
     loadStats();
     loadRecentJobs();
     connectWebSocket();
+    checkHealth();
 
-    // Set up auto-refresh
-    setInterval(loadStats, 30000); // Every 30 seconds
-    setInterval(loadRecentJobs, 60000); // Every minute
-
-    // Initialize settings from localStorage
-    loadSavedSettings();
+    setInterval(loadStats, 30000);
+    setInterval(loadRecentJobs, 60000);
 });
 
 // Page Navigation
 function showPage(pageName, evt) {
-    // Update nav items
-    document.querySelectorAll('.nav-item').forEach(item => {
-        item.classList.remove('active');
-    });
+    document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
 
-    // Handle the event properly - evt might be undefined if called programmatically
     if (evt && evt.target) {
         const navItem = evt.target.closest('.nav-item');
-        if (navItem) {
-            navItem.classList.add('active');
-        }
+        if (navItem) navItem.classList.add('active');
     } else {
-        // Find and activate the correct nav item by page name
         document.querySelectorAll('.nav-item').forEach(item => {
-            if (item.textContent.toLowerCase().includes(pageName.toLowerCase()) ||
-                item.querySelector('span')?.textContent.toLowerCase().includes(pageName.toLowerCase())) {
+            const span = item.querySelector('span');
+            if (span && span.textContent.toLowerCase().includes(pageName.toLowerCase())) {
                 item.classList.add('active');
             }
         });
     }
 
-    // Update pages
-    document.querySelectorAll('.page').forEach(page => {
-        page.classList.remove('active');
-    });
-    document.getElementById('page-' + pageName).classList.add('active');
+    document.querySelectorAll('.page').forEach(page => page.classList.remove('active'));
+    const targetPage = document.getElementById('page-' + pageName);
+    if (targetPage) targetPage.classList.add('active');
 
-    // Update page title
     const titles = {
         'dashboard': 'Dashboard',
         'scraper': 'New Scrape Job',
@@ -66,34 +54,33 @@ function showPage(pageName, evt) {
     };
     document.getElementById('pageTitle').textContent = titles[pageName] || pageName;
 
-    // Load page-specific data
     if (pageName === 'jobs') loadJobs();
     if (pageName === 'leads') loadLeads();
     if (pageName === 'analytics') loadAnalytics();
     if (pageName === 'settings') loadSettingsData();
+    if (pageName === 'export') loadExports();
 }
 
 // Load Statistics
 async function loadStats() {
     try {
         const response = await fetch(`${API_URL}/stats`);
+        if (!response.ok) throw new Error('Failed to load stats');
         const stats = await response.json();
 
-        // Update stat cards
-        document.getElementById('stat-total').textContent = stats.total_leads.toLocaleString();
-        document.getElementById('stat-phone').textContent = stats.leads_with_phone.toLocaleString();
-        document.getElementById('stat-email').textContent = stats.leads_with_email.toLocaleString();
-        document.getElementById('stat-quality').textContent = stats.average_quality_score.toFixed(1) + '%';
+        document.getElementById('stat-total').textContent = (stats.total_leads || 0).toLocaleString();
+        document.getElementById('stat-phone').textContent = (stats.leads_with_phone || 0).toLocaleString();
+        document.getElementById('stat-email').textContent = (stats.leads_with_email || 0).toLocaleString();
+        document.getElementById('stat-quality').textContent = (stats.avg_quality_score || 0).toFixed(1) + '%';
 
-        // Calculate percentages
-        const phonePercent = stats.total_leads > 0 ? (stats.leads_with_phone / stats.total_leads * 100).toFixed(1) : 0;
-        const emailPercent = stats.total_leads > 0 ? (stats.leads_with_email / stats.total_leads * 100).toFixed(1) : 0;
+        const total = stats.total_leads || 0;
+        const phonePercent = total > 0 ? ((stats.leads_with_phone || 0) / total * 100).toFixed(1) : 0;
+        const emailPercent = total > 0 ? ((stats.leads_with_email || 0) / total * 100).toFixed(1) : 0;
 
         document.getElementById('stat-phone-percent').textContent = phonePercent + '% of total';
         document.getElementById('stat-email-percent').textContent = emailPercent + '% of total';
 
-        // Quality description
-        const quality = stats.average_quality_score;
+        const quality = stats.avg_quality_score || 0;
         let qualityDesc = 'No data';
         if (quality >= 80) qualityDesc = 'Excellent';
         else if (quality >= 60) qualityDesc = 'Good';
@@ -101,42 +88,87 @@ async function loadStats() {
         else if (quality > 0) qualityDesc = 'Poor';
         document.getElementById('stat-quality-desc').textContent = qualityDesc;
 
-        // Update system info
-        document.getElementById('sysInfoLeads').textContent = stats.total_leads.toLocaleString();
+        if (stats.leads_today !== undefined) {
+            const todayEl = document.getElementById('stat-today-trend');
+            if (todayEl) todayEl.textContent = `+${stats.leads_today} today`;
+        }
+
+        // Update dashboard quality chart
+        updateDashboardQualityChart(stats);
 
     } catch (error) {
         console.error('Error loading stats:', error);
-        showNotification('Failed to load statistics', 'error');
     }
+}
+
+function updateDashboardQualityChart(stats) {
+    const ctx = document.getElementById('dashboardQualityChart');
+    if (!ctx) return;
+
+    if (charts.dashboardQuality) charts.dashboardQuality.destroy();
+
+    charts.dashboardQuality = new Chart(ctx.getContext('2d'), {
+        type: 'doughnut',
+        data: {
+            labels: ['High (70+)', 'Medium (40-69)', 'Low (<40)'],
+            datasets: [{
+                data: [
+                    stats.high_quality_leads || 0,
+                    stats.medium_quality_leads || 0,
+                    stats.low_quality_leads || 0
+                ],
+                backgroundColor: ['#10b981', '#f59e0b', '#ef4444']
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom' } }
+        }
+    });
 }
 
 // Load Recent Jobs
 async function loadRecentJobs() {
     try {
         const response = await fetch(`${API_URL}/jobs?limit=5`);
-        const jobs = await response.json();
+        if (!response.ok) throw new Error('Failed to load jobs');
+        const data = await response.json();
+        const jobs = data.jobs || [];
 
         const tbody = document.getElementById('recentJobsBody');
+        if (!tbody) return;
 
         if (jobs.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 2rem;">No jobs yet</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="3" class="empty-state"><i class="fas fa-inbox"></i><p>No jobs yet</p></td></tr>';
             return;
         }
 
         tbody.innerHTML = jobs.map(job => `
             <tr>
-                <td><strong>#${job.id}</strong></td>
-                <td>${job.search_query} ${job.location ? 'in ' + job.location : ''}</td>
+                <td>
+                    <strong>#${job.job_id}</strong><br>
+                    <small style="color: var(--gray-500);">${job.search_query}${job.location ? ' in ' + job.location : ''}</small>
+                </td>
                 <td>${getStatusBadge(job.status)}</td>
                 <td>
-                    <div style="margin-bottom: 0.25rem;">${job.leads_scraped} / ${job.leads_target}</div>
-                    <div class="progress">
-                        <div class="progress-bar" style="width: ${getProgress(job)}%"></div>
-                    </div>
+                    <div style="margin-bottom: 0.25rem;">${job.results_count || 0} / ${job.max_results}</div>
+                    <div class="progress"><div class="progress-bar" style="width: ${getProgress(job)}%"></div></div>
                 </td>
-                <td>${formatDate(job.started_at)}</td>
             </tr>
         `).join('');
+
+        // Update running jobs badge
+        const runningJobs = jobs.filter(j => j.status === 'running').length;
+        const badge = document.getElementById('runningJobsBadge');
+        if (badge) {
+            if (runningJobs > 0) {
+                badge.textContent = runningJobs;
+                badge.style.display = 'inline';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
 
     } catch (error) {
         console.error('Error loading recent jobs:', error);
@@ -147,62 +179,36 @@ async function loadRecentJobs() {
 async function loadJobs() {
     try {
         const response = await fetch(`${API_URL}/jobs?limit=100`);
-        const jobs = await response.json();
+        if (!response.ok) throw new Error('Failed to load jobs');
+        const data = await response.json();
+        const jobs = data.jobs || [];
 
         const tbody = document.getElementById('jobsBody');
+        if (!tbody) return;
+
+        if (jobs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><i class="fas fa-inbox"></i><p>No jobs yet</p></td></tr>';
+            return;
+        }
+
         tbody.innerHTML = jobs.map(job => `
             <tr>
-                <td><strong>#${job.id}</strong></td>
+                <td><strong>#${job.job_id}</strong></td>
                 <td>${job.search_query}</td>
                 <td>${job.location || '-'}</td>
                 <td>${getStatusBadge(job.status)}</td>
                 <td>
-                    <div style="margin-bottom: 0.25rem;">${job.leads_scraped} / ${job.leads_target}</div>
-                    <div class="progress">
-                        <div class="progress-bar" style="width: ${getProgress(job)}%"></div>
-                    </div>
+                    <div style="margin-bottom: 0.25rem;">${job.results_count || 0} / ${job.max_results}</div>
+                    <div class="progress"><div class="progress-bar" style="width: ${getProgress(job)}%"></div></div>
                 </td>
-                <td>${formatDate(job.started_at)}</td>
-                <td>${job.completed_at ? formatDate(job.completed_at) : '-'}</td>
+                <td>${formatDate(job.created_at)}</td>
                 <td>
-                    <button class="action-btn" onclick="viewJobDetails(${job.id})" title="View Details">
-                        <i class="fas fa-eye"></i>
-                    </button>
-                    ${job.status === 'failed' ? `
-                        <button class="action-btn" onclick="retryJob(${job.id})" title="Retry">
-                            <i class="fas fa-redo"></i>
-                        </button>
-                    ` : ''}
-                    ${job.status === 'running' ? `
-                        <button class="action-btn" onclick="pauseJob(${job.id})" title="Pause">
-                            <i class="fas fa-pause"></i>
-                        </button>
-                    ` : ''}
-                    ${job.status === 'paused' ? `
-                        <button class="action-btn" onclick="resumeJob(${job.id})" title="Resume">
-                            <i class="fas fa-play"></i>
-                        </button>
-                    ` : ''}
-                    ${job.status !== 'running' ? `
-                        <button class="action-btn action-btn-danger" onclick="deleteJob(${job.id})" title="Delete">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    ` : ''}
+                    <button class="action-btn" onclick="viewJobDetails(${job.job_id})" title="View"><i class="fas fa-eye"></i></button>
+                    ${job.status === 'failed' ? `<button class="action-btn action-btn-success" onclick="retryJob(${job.job_id})" title="Retry"><i class="fas fa-redo"></i></button>` : ''}
+                    ${job.status !== 'running' ? `<button class="action-btn action-btn-danger" onclick="deleteJob(${job.job_id})" title="Delete"><i class="fas fa-trash"></i></button>` : ''}
                 </td>
             </tr>
         `).join('');
-
-        // Update system info
-        document.getElementById('sysInfoJobs').textContent = jobs.length.toLocaleString();
-
-        // Initialize DataTable if not already initialized
-        if (jobsDataTable) {
-            jobsDataTable.destroy();
-        }
-        jobsDataTable = new DataTable('#jobsTable', {
-            order: [[0, 'desc']],
-            pageLength: 25
-        });
 
     } catch (error) {
         console.error('Error loading jobs:', error);
@@ -211,52 +217,85 @@ async function loadJobs() {
 }
 
 // Load Leads
-async function loadLeads() {
+async function loadLeads(page = 1) {
     try {
         showLoading(true);
-        const response = await fetch(`${API_URL}/leads?limit=1000`);
-        const leads = await response.json();
+        currentLeadsPage = page;
+        const offset = (page - 1) * leadsPerPage;
+
+        let url = `${API_URL}/leads?limit=${leadsPerPage}&offset=${offset}`;
+
+        // Add filters
+        const search = document.getElementById('filterSearch')?.value;
+        const city = document.getElementById('filterCity')?.value;
+        const category = document.getElementById('filterCategory')?.value;
+        const minQuality = document.getElementById('filterMinQuality')?.value;
+
+        if (search) url += `&search=${encodeURIComponent(search)}`;
+        if (city) url += `&city=${encodeURIComponent(city)}`;
+        if (category) url += `&category=${encodeURIComponent(category)}`;
+        if (minQuality) url += `&min_quality=${minQuality}`;
+
+        if (document.getElementById('filterHasPhone')?.checked) url += '&has_phone=true';
+        if (document.getElementById('filterHasEmail')?.checked) url += '&has_email=true';
+        if (document.getElementById('filterHasWebsite')?.checked) url += '&has_website=true';
+
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Failed to load leads');
+        const data = await response.json();
+
+        const leads = data.leads || [];
+        totalLeads = data.total || 0;
+
+        document.getElementById('leadsCount').textContent = totalLeads.toLocaleString();
 
         const tbody = document.getElementById('leadsBody');
-        tbody.innerHTML = leads.map((lead, index) => `
+        if (!tbody) return;
+
+        if (leads.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><i class="fas fa-inbox"></i><p>No leads found</p></td></tr>';
+            document.getElementById('leadsPagination').innerHTML = '';
+            showLoading(false);
+            return;
+        }
+
+        tbody.innerHTML = leads.map(lead => `
             <tr>
-                <td><input type="checkbox" class="lead-select" data-id="${lead.id}"></td>
-                <td><strong>${lead.business_name}</strong></td>
-                <td>${lead.category || '-'}</td>
-                <td>${lead.city || '-'}</td>
-                <td>${lead.phone ? `<a href="tel:${lead.phone}">${lead.phone}</a>` : '-'}</td>
-                <td>${lead.email || '-'}</td>
-                <td>${lead.website ? `<a href="${lead.website}" target="_blank"><i class="fas fa-external-link-alt"></i></a>` : '-'}</td>
-                <td>${lead.rating ? lead.rating + ' ★' : '-'}</td>
-                <td>${getQualityBadge(lead.data_quality_score)}</td>
+                <td><input type="checkbox" class="lead-checkbox" data-id="${lead.id}"></td>
                 <td>
-                    <button class="action-btn" onclick="viewLeadDetails(${lead.id})" title="View Details">
-                        <i class="fas fa-eye"></i>
-                    </button>
-                    <button class="action-btn" onclick="deleteLead(${lead.id})" title="Delete">
-                        <i class="fas fa-trash"></i>
-                    </button>
+                    <strong>${lead.business_name || 'N/A'}</strong>
+                    ${lead.website ? `<br><a href="${lead.website}" target="_blank" style="font-size: 0.8125rem; color: var(--primary);"><i class="fas fa-external-link-alt"></i> Website</a>` : ''}
+                </td>
+                <td>${lead.category || '-'}</td>
+                <td>${lead.city || '-'}${lead.pincode ? ', ' + lead.pincode : ''}</td>
+                <td>
+                    ${lead.phone ? `<a href="tel:${lead.phone}">${lead.phone}</a>` : '-'}
+                    ${lead.email ? `<br><a href="mailto:${lead.email}" style="font-size: 0.8125rem;">${lead.email}</a>` : ''}
+                </td>
+                <td>${lead.rating ? lead.rating.toFixed(1) + ' <i class="fas fa-star" style="color: #f59e0b;"></i>' : '-'}</td>
+                <td>${getQualityBadge(lead.quality_score)}</td>
+                <td>
+                    <button class="action-btn" onclick="viewLeadDetails(${lead.id})" title="View"><i class="fas fa-eye"></i></button>
+                    <button class="action-btn action-btn-danger" onclick="deleteLead(${lead.id})" title="Delete"><i class="fas fa-trash"></i></button>
                 </td>
             </tr>
         `).join('');
 
-        // Initialize DataTable
-        if (leadsDataTable) {
-            leadsDataTable.destroy();
-        }
-        leadsDataTable = new DataTable('#leadsTable', {
-            order: [[8, 'desc']], // Sort by quality
-            pageLength: 50,
-            dom: 'Bfrtip'
+        // Add event listeners to individual checkboxes
+        document.querySelectorAll('.lead-checkbox').forEach(cb => {
+            cb.addEventListener('change', updateSelectedCount);
         });
 
-        // Select all checkbox
-        document.getElementById('selectAll').addEventListener('change', function() {
-            document.querySelectorAll('.lead-select').forEach(cb => {
-                cb.checked = this.checked;
-            });
-        });
+        // Initialize select all functionality
+        initSelectAll();
 
+        // Reset select all checkbox and count
+        const selectAllCheckbox = document.getElementById('selectAll');
+        if (selectAllCheckbox) selectAllCheckbox.checked = false;
+        updateSelectedCount();
+
+        // Pagination
+        renderPagination();
         showLoading(false);
 
     } catch (error) {
@@ -266,87 +305,223 @@ async function loadLeads() {
     }
 }
 
+function renderPagination() {
+    const totalPages = Math.ceil(totalLeads / leadsPerPage);
+    const pagination = document.getElementById('leadsPagination');
+    if (!pagination || totalPages <= 1) {
+        if (pagination) pagination.innerHTML = '';
+        return;
+    }
+
+    let html = '';
+    html += `<button class="pagination-btn" onclick="loadLeads(${currentLeadsPage - 1})" ${currentLeadsPage === 1 ? 'disabled' : ''}><i class="fas fa-chevron-left"></i></button>`;
+
+    const maxVisible = 5;
+    let start = Math.max(1, currentLeadsPage - 2);
+    let end = Math.min(totalPages, start + maxVisible - 1);
+    if (end - start < maxVisible - 1) start = Math.max(1, end - maxVisible + 1);
+
+    if (start > 1) {
+        html += `<button class="pagination-btn" onclick="loadLeads(1)">1</button>`;
+        if (start > 2) html += `<span style="padding: 0 0.5rem;">...</span>`;
+    }
+
+    for (let i = start; i <= end; i++) {
+        html += `<button class="pagination-btn ${i === currentLeadsPage ? 'active' : ''}" onclick="loadLeads(${i})">${i}</button>`;
+    }
+
+    if (end < totalPages) {
+        if (end < totalPages - 1) html += `<span style="padding: 0 0.5rem;">...</span>`;
+        html += `<button class="pagination-btn" onclick="loadLeads(${totalPages})">${totalPages}</button>`;
+    }
+
+    html += `<button class="pagination-btn" onclick="loadLeads(${currentLeadsPage + 1})" ${currentLeadsPage === totalPages ? 'disabled' : ''}><i class="fas fa-chevron-right"></i></button>`;
+
+    pagination.innerHTML = html;
+}
+
+// Filters
+function applyFilters() {
+    loadLeads(1);
+}
+
+function applyAdvancedFilters() {
+    loadLeads(1);
+}
+
+function saveFilterPreset() {
+    const filters = {
+        search: document.getElementById('filterSearch')?.value,
+        city: document.getElementById('filterCity')?.value,
+        category: document.getElementById('filterCategory')?.value,
+        minQuality: document.getElementById('filterMinQuality')?.value,
+        hasPhone: document.getElementById('filterHasPhone')?.checked,
+        hasEmail: document.getElementById('filterHasEmail')?.checked,
+        hasWebsite: document.getElementById('filterHasWebsite')?.checked
+    };
+    localStorage.setItem('leadFilterPreset', JSON.stringify(filters));
+    showNotification('Filter preset saved!', 'success');
+}
+
+function clearFilters() {
+    document.getElementById('filterSearch').value = '';
+    document.getElementById('filterCity').value = '';
+    document.getElementById('filterCategory').value = '';
+    document.getElementById('filterMinQuality').value = '';
+    if (document.getElementById('filterHasPhone')) document.getElementById('filterHasPhone').checked = false;
+    if (document.getElementById('filterHasEmail')) document.getElementById('filterHasEmail').checked = false;
+    if (document.getElementById('filterHasWebsite')) document.getElementById('filterHasWebsite').checked = false;
+    loadLeads(1);
+    showNotification('Filters cleared', 'info');
+}
+
+function applyQuickFilter(filterType) {
+    clearFilters();
+    switch (filterType) {
+        case 'high_quality':
+            document.getElementById('filterMinQuality').value = '70';
+            break;
+        case 'with_email':
+            document.getElementById('filterHasEmail').checked = true;
+            break;
+        case 'with_phone':
+            document.getElementById('filterHasPhone').checked = true;
+            break;
+        case 'top_rated':
+            // Would need min_rating filter
+            break;
+    }
+    loadLeads(1);
+}
+
 // Start Scraping
 async function startScrape(event) {
     event.preventDefault();
 
+    const searchQuery = document.getElementById('searchQuery').value;
+    const location = document.getElementById('searchLocation').value;
+    const maxResults = parseInt(document.getElementById('maxResults').value) || 50;
+
+    if (!searchQuery || searchQuery.trim() === '') {
+        showNotification('Please enter a search query', 'error');
+        return false;
+    }
+
+    const extractEmails = document.getElementById('extractEmails')?.value === 'true';
+    const extractSocial = document.getElementById('extractSocial')?.value === 'true';
+    const headless = document.getElementById('headlessMode')?.checked !== false;
+
     const data = {
-        search_query: document.getElementById('searchQuery').value,
-        location: document.getElementById('searchLocation').value || null,
-        max_results: parseInt(document.getElementById('maxResults').value),
-        extract_emails: document.getElementById('extractEmails').value === 'true',
-        use_proxies: document.getElementById('useProxies').checked,
-        headless: document.getElementById('headlessMode').checked
+        search_query: searchQuery.trim(),
+        location: location?.trim() || null,
+        max_results: maxResults,
+        extract_emails: extractEmails,
+        extract_social: extractSocial,
+        headless: headless
     };
 
     try {
         showLoading(true);
+        showNotification('Starting scrape job...', 'info');
+
         const response = await fetch(`${API_URL}/scrape`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
 
-        if (!response.ok) throw new Error('Failed to start scrape');
+        const result = await response.json();
 
-        const job = await response.json();
-        showNotification(`Scraping started! Job #${job.id}`, 'success');
+        if (!response.ok) throw new Error(result.detail || 'Failed to start scrape');
 
-        // Reset form
+        showNotification(`Scraping started! Job #${result.job_id}`, 'success');
         document.getElementById('scrapeForm').reset();
 
-        // Switch to jobs page
+        if (document.getElementById('headlessMode')) document.getElementById('headlessMode').checked = true;
+        if (document.getElementById('deduplicateResults')) document.getElementById('deduplicateResults').checked = true;
+
         setTimeout(() => {
             showPage('jobs');
+            loadJobs();
         }, 1500);
 
         showLoading(false);
+        return false;
 
     } catch (error) {
         console.error('Error starting scrape:', error);
         showNotification('Failed to start scraping: ' + error.message, 'error');
         showLoading(false);
+        return false;
     }
 }
 
-// Start Bulk Scraping
+// Bulk Scrape
 async function startBulkScrape(event) {
     event.preventDefault();
 
+    const searchQuery = document.getElementById('bulkQuery').value.trim();
+    if (!searchQuery) {
+        showNotification('Please enter a search query', 'error');
+        return false;
+    }
+
     const locations = document.getElementById('bulkLocations').value
-        .split(',')
+        .split(/[\n,]/)
         .map(l => l.trim())
         .filter(l => l.length > 0);
 
+    if (locations.length === 0) {
+        showNotification('Please enter at least one location', 'error');
+        return false;
+    }
+
+    const maxResultsPerLocation = parseInt(document.getElementById('bulkMaxResults').value) || 50;
+    const delayBetween = parseInt(document.getElementById('bulkDelay').value) || 60;
+    const extractEmails = document.getElementById('bulkExtractEmails')?.checked !== false;
+
+    // Build searches array - API expects an array of ScrapeRequest objects
+    const searches = locations.map(location => ({
+        search_query: searchQuery,
+        location: location,
+        max_results: maxResultsPerLocation,
+        extract_emails: extractEmails,
+        extract_social: true,
+        extract_contacts: true,
+        extract_insights: true,
+        extract_reviews: false,
+        extract_popular_times: false,
+        enrich_from_website: extractEmails,
+        export_excel: true,
+        export_sheets: false,
+        headless: true
+    }));
+
     const data = {
-        search_query: document.getElementById('bulkQuery').value,
-        locations: locations,
-        max_results_per_location: parseInt(document.getElementById('bulkMaxResults').value),
-        delay_between_locations: parseInt(document.getElementById('bulkDelay').value),
-        extract_emails: document.getElementById('bulkExtractEmails').checked
+        searches: searches,
+        delay_between: delayBetween
     };
 
     try {
         showLoading(true);
+        showNotification(`Starting bulk scrape for ${locations.length} locations...`, 'info');
+
         const response = await fetch(`${API_URL}/bulk-scrape`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
 
-        if (!response.ok) throw new Error('Failed to start bulk scrape');
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || 'Failed to start bulk scrape');
+        }
 
         const result = await response.json();
-        showNotification(`Bulk scraping started for ${locations.length} locations!`, 'success');
+        showNotification(`Bulk scraping started! Job #${result.job_id} - ${locations.length} locations queued.`, 'success');
 
-        // Reset form
         document.getElementById('bulkScrapeForm').reset();
-
-        // Switch to jobs page
-        setTimeout(() => {
-            showPage('jobs');
-        }, 1500);
-
+        setTimeout(() => showPage('jobs'), 1500);
         showLoading(false);
 
     } catch (error) {
@@ -354,6 +529,8 @@ async function startBulkScrape(event) {
         showNotification('Failed to start bulk scraping: ' + error.message, 'error');
         showLoading(false);
     }
+
+    return false;
 }
 
 // Export Data
@@ -361,20 +538,18 @@ async function exportData(event) {
     event.preventDefault();
 
     const filters = {};
-    if (document.getElementById('exportFilterPhone').checked) filters.has_phone = true;
-    if (document.getElementById('exportFilterWebsite').checked) filters.has_website = true;
-    if (document.getElementById('exportFilterEmail').checked) filters.has_email = true;
+    if (document.getElementById('exportHasPhone')?.checked) filters.has_phone = true;
+    if (document.getElementById('exportHasEmail')?.checked) filters.has_email = true;
 
-    const city = document.getElementById('exportFilterCity').value;
+    const city = document.getElementById('exportCity')?.value;
     if (city) filters.city = city;
 
-    const minQuality = parseInt(document.getElementById('exportMinQuality').value);
-    if (minQuality > 0) filters.min_quality_score = minQuality;
+    const minQuality = parseInt(document.getElementById('exportMinQuality')?.value);
+    if (minQuality > 0) filters.min_quality = minQuality;
 
     const data = {
         format: document.getElementById('exportFormat').value,
-        filters: filters,
-        filename: `leads_export_${Date.now()}`
+        filters: filters
     };
 
     try {
@@ -388,12 +563,17 @@ async function exportData(event) {
         if (!response.ok) throw new Error('Export failed');
 
         const result = await response.json();
-        showNotification(`Export successful! ${result.count} leads exported. Downloading...`, 'success');
 
-        // Trigger file download
-        const filename = result.filepath.split(/[/\\]/).pop();
-        downloadExportFile(filename);
+        if (result.success && result.download_url) {
+            showNotification(`Export successful! ${result.records_exported} leads exported.`, 'success');
+            window.open(API_URL.replace('/api', '') + result.download_url, '_blank');
+        } else if (result.records_exported > 0) {
+            showNotification(`Exported ${result.records_exported} leads`, 'success');
+        } else {
+            showNotification(result.error || 'Export completed', 'warning');
+        }
 
+        loadExports();
         showLoading(false);
 
     } catch (error) {
@@ -401,236 +581,355 @@ async function exportData(event) {
         showNotification('Export failed: ' + error.message, 'error');
         showLoading(false);
     }
+
+    return false;
 }
 
-// Download exported file
-function downloadExportFile(filename) {
-    const downloadUrl = `${API_URL}/export/download/${filename}`;
-    const link = document.createElement('a');
-    link.href = downloadUrl;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+async function loadExports() {
+    try {
+        const response = await fetch(`${API_URL}/export/list`);
+        if (!response.ok) return;
+
+        const data = await response.json();
+        const exports = data.exports || [];
+        const container = document.getElementById('exportsList');
+        if (!container) return;
+
+        if (exports.length === 0) {
+            container.innerHTML = '<div class="empty-state"><i class="fas fa-file-download"></i><p>No exports yet</p></div>';
+            return;
+        }
+
+        container.innerHTML = exports.slice(0, 5).map(exp => `
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid var(--border-color);">
+                <div>
+                    <strong>${exp.filename}</strong>
+                    <div style="font-size: 0.8125rem; color: var(--gray-500);">${formatBytes(exp.size)} - ${formatDate(exp.created_at)}</div>
+                </div>
+                <a href="${API_URL.replace('/api', '')}${exp.download_url}" class="btn btn-sm btn-outline" download><i class="fas fa-download"></i></a>
+            </div>
+        `).join('');
+
+    } catch (error) {
+        console.error('Error loading exports:', error);
+    }
 }
 
-// Load Analytics
+function exportSelected() {
+    const selected = document.querySelectorAll('.lead-checkbox:checked');
+    if (selected.length === 0) {
+        showNotification('Please select leads to export', 'warning');
+        return;
+    }
+    showPage('export');
+}
+
+// Select All functionality
+function initSelectAll() {
+    const selectAllCheckbox = document.getElementById('selectAll');
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('change', function() {
+            const checkboxes = document.querySelectorAll('.lead-checkbox');
+            checkboxes.forEach(cb => cb.checked = this.checked);
+            updateSelectedCount();
+        });
+    }
+}
+
+function updateSelectedCount() {
+    const selected = document.querySelectorAll('.lead-checkbox:checked');
+    const countEl = document.getElementById('selectedCount');
+    if (countEl) {
+        if (selected.length > 0) {
+            countEl.textContent = `${selected.length} selected`;
+        } else {
+            countEl.textContent = '';
+        }
+    }
+
+    // Update select all checkbox state
+    const selectAllCheckbox = document.getElementById('selectAll');
+    const allCheckboxes = document.querySelectorAll('.lead-checkbox');
+    if (selectAllCheckbox && allCheckboxes.length > 0) {
+        selectAllCheckbox.checked = selected.length === allCheckboxes.length;
+        selectAllCheckbox.indeterminate = selected.length > 0 && selected.length < allCheckboxes.length;
+    }
+}
+
+// Delete selected leads
+async function deleteSelected() {
+    const selected = document.querySelectorAll('.lead-checkbox:checked');
+    if (selected.length === 0) {
+        showNotification('Please select leads to delete', 'warning');
+        return;
+    }
+
+    if (!confirm(`Are you sure you want to delete ${selected.length} lead(s)? This action cannot be undone.`)) {
+        return;
+    }
+
+    showLoading(true);
+
+    // Collect all selected lead IDs
+    const leadIds = Array.from(selected).map(cb => parseInt(cb.dataset.id));
+
+    try {
+        // Use bulk delete API for efficiency
+        const response = await fetch(`${API_URL}/leads/bulk-delete`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(leadIds)
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            showNotification(`Successfully deleted ${result.deleted} lead(s)`, 'success');
+            loadLeads(currentLeadsPage);
+            loadStats();
+        } else {
+            throw new Error('Bulk delete failed');
+        }
+    } catch (error) {
+        console.error('Error deleting leads:', error);
+        showNotification('Failed to delete leads', 'error');
+    }
+
+    showLoading(false);
+
+    // Reset select all checkbox
+    const selectAllCheckbox = document.getElementById('selectAll');
+    if (selectAllCheckbox) selectAllCheckbox.checked = false;
+    updateSelectedCount();
+}
+
+// Select all leads on current page
+function selectAllLeads() {
+    const checkboxes = document.querySelectorAll('.lead-checkbox');
+    checkboxes.forEach(cb => cb.checked = true);
+    const selectAllCheckbox = document.getElementById('selectAll');
+    if (selectAllCheckbox) selectAllCheckbox.checked = true;
+    updateSelectedCount();
+    showNotification(`Selected ${checkboxes.length} leads on this page`, 'info');
+}
+
+// Deselect all leads
+function deselectAllLeads() {
+    const checkboxes = document.querySelectorAll('.lead-checkbox');
+    checkboxes.forEach(cb => cb.checked = false);
+    const selectAllCheckbox = document.getElementById('selectAll');
+    if (selectAllCheckbox) selectAllCheckbox.checked = false;
+    updateSelectedCount();
+    showNotification('All leads deselected', 'info');
+}
+
+// Invert selection - select unselected leads and deselect selected ones
+// Useful workflow: Select All -> Deselect leads you want to KEEP -> Delete Selected
+function invertSelection() {
+    const checkboxes = document.querySelectorAll('.lead-checkbox');
+    let selectedCount = 0;
+    let deselectedCount = 0;
+
+    checkboxes.forEach(cb => {
+        if (cb.checked) {
+            cb.checked = false;
+            deselectedCount++;
+        } else {
+            cb.checked = true;
+            selectedCount++;
+        }
+    });
+
+    updateSelectedCount();
+    showNotification(`Selection inverted: ${selectedCount} selected, ${deselectedCount} deselected`, 'info');
+}
+
+// Delete ALL leads in the database
+async function deleteAllLeads() {
+    if (!confirm(`WARNING: This will delete ALL ${totalLeads} leads from the database!\n\nThis action CANNOT be undone.\n\nAre you absolutely sure?`)) {
+        return;
+    }
+
+    // Double confirmation for safety
+    const confirmText = prompt(`To confirm deletion of ALL ${totalLeads} leads, type "DELETE ALL" below:`);
+    if (confirmText !== 'DELETE ALL') {
+        showNotification('Deletion cancelled - confirmation text did not match', 'warning');
+        return;
+    }
+
+    showLoading(true);
+    showNotification('Deleting all leads... This may take a moment.', 'info');
+
+    try {
+        // Fetch all lead IDs first
+        const response = await fetch(`${API_URL}/leads?limit=10000`);
+        if (!response.ok) throw new Error('Failed to fetch leads');
+
+        const data = await response.json();
+        const allLeadIds = data.leads.map(lead => lead.id);
+
+        if (allLeadIds.length === 0) {
+            showNotification('No leads to delete', 'warning');
+            showLoading(false);
+            return;
+        }
+
+        // Delete in batches of 100 for efficiency
+        const batchSize = 100;
+        let totalDeleted = 0;
+
+        for (let i = 0; i < allLeadIds.length; i += batchSize) {
+            const batch = allLeadIds.slice(i, i + batchSize);
+            const deleteResponse = await fetch(`${API_URL}/leads/bulk-delete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(batch)
+            });
+
+            if (deleteResponse.ok) {
+                const result = await deleteResponse.json();
+                totalDeleted += result.deleted;
+            }
+        }
+
+        showNotification(`Successfully deleted ${totalDeleted} leads!`, 'success');
+        loadLeads(1);
+        loadStats();
+
+    } catch (error) {
+        console.error('Error deleting all leads:', error);
+        showNotification('Failed to delete all leads: ' + error.message, 'error');
+    }
+
+    showLoading(false);
+}
+
+// Analytics
 async function loadAnalytics() {
     try {
-        const response = await fetch(`${API_URL}/analytics`);
-        const data = await response.json();
+        // Load quality analytics
+        const qualityResponse = await fetch(`${API_URL}/analytics/quality`);
+        if (qualityResponse.ok) {
+            const quality = await qualityResponse.json();
+            document.getElementById('analytics-high-quality').textContent = (quality.high_quality_leads || 0).toLocaleString();
+            document.getElementById('analytics-medium-quality').textContent = (quality.medium_quality_leads || 0).toLocaleString();
+            document.getElementById('analytics-low-quality').textContent = (quality.low_quality_leads || 0).toLocaleString();
+        }
 
-        // Categories Chart
-        if (charts.categories) charts.categories.destroy();
-        const ctxCategories = document.getElementById('categoriesChart').getContext('2d');
-        charts.categories = new Chart(ctxCategories, {
-            type: 'bar',
-            data: {
-                labels: data.top_categories.map(c => c.category),
-                datasets: [{
-                    label: 'Number of Leads',
-                    data: data.top_categories.map(c => c.count),
-                    backgroundColor: 'rgba(102, 126, 234, 0.8)'
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: 'Top Categories'
-                    }
+        // Load stats for charts
+        const statsResponse = await fetch(`${API_URL}/stats`);
+        if (statsResponse.ok) {
+            const stats = await statsResponse.json();
+
+            // Categories chart
+            if (stats.top_categories && stats.top_categories.length > 0) {
+                const ctxCategories = document.getElementById('categoriesChart');
+                if (ctxCategories) {
+                    if (charts.categories) charts.categories.destroy();
+                    charts.categories = new Chart(ctxCategories.getContext('2d'), {
+                        type: 'bar',
+                        data: {
+                            labels: stats.top_categories.map(c => c.category || 'Unknown'),
+                            datasets: [{
+                                label: 'Leads',
+                                data: stats.top_categories.map(c => c.count),
+                                backgroundColor: 'rgba(99, 102, 241, 0.8)'
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: { legend: { display: false } }
+                        }
+                    });
                 }
             }
-        });
 
-        // Quality Distribution Chart
-        if (charts.quality) charts.quality.destroy();
-        const ctxQuality = document.getElementById('qualityChart').getContext('2d');
-        charts.quality = new Chart(ctxQuality, {
-            type: 'doughnut',
-            data: {
-                labels: ['Excellent (80-100%)', 'Good (60-79%)', 'Fair (40-59%)', 'Poor (0-39%)'],
-                datasets: [{
-                    data: data.quality_distribution,
-                    backgroundColor: [
-                        'rgba(16, 185, 129, 0.8)',
-                        'rgba(59, 130, 246, 0.8)',
-                        'rgba(245, 158, 11, 0.8)',
-                        'rgba(239, 68, 68, 0.8)'
-                    ]
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: 'Quality Score Distribution'
-                    }
+            // Cities chart
+            if (stats.top_cities && stats.top_cities.length > 0) {
+                const ctxCities = document.getElementById('citiesChart');
+                if (ctxCities) {
+                    if (charts.cities) charts.cities.destroy();
+                    charts.cities = new Chart(ctxCities.getContext('2d'), {
+                        type: 'bar',
+                        data: {
+                            labels: stats.top_cities.map(c => c.city || 'Unknown'),
+                            datasets: [{
+                                label: 'Leads',
+                                data: stats.top_cities.map(c => c.count),
+                                backgroundColor: 'rgba(16, 185, 129, 0.8)'
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: { legend: { display: false } }
+                        }
+                    });
                 }
             }
-        });
-
-        // Activity Chart
-        if (charts.activity) charts.activity.destroy();
-        const ctxActivity = document.getElementById('activityChart').getContext('2d');
-        charts.activity = new Chart(ctxActivity, {
-            type: 'line',
-            data: {
-                labels: data.activity_timeline.map(a => a.date),
-                datasets: [{
-                    label: 'Leads Scraped',
-                    data: data.activity_timeline.map(a => a.count),
-                    borderColor: 'rgba(102, 126, 234, 1)',
-                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
-                    tension: 0.4
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: 'Scraping Activity (Last 7 Days)'
-                    }
-                }
-            }
-        });
+        }
 
     } catch (error) {
         console.error('Error loading analytics:', error);
-        showNotification('Failed to load analytics', 'error');
     }
 }
 
 // Settings
-async function loadSavedSettings() {
-    try {
-        const response = await fetch(`${API_URL}/settings`);
-        if (response.ok) {
-            const data = await response.json();
-            // Store in localStorage as backup
-            localStorage.setItem('scraperSettings', JSON.stringify(data.settings));
-        }
-    } catch (error) {
-        console.error('Error loading settings from API:', error);
-        // Fall back to localStorage
-    }
-}
-
 async function loadSettingsData() {
-    try {
-        // Try to load from API first
-        const response = await fetch(`${API_URL}/settings`);
-        if (response.ok) {
-            const data = await response.json();
-            const settings = data.settings;
-
-            document.getElementById('settingMaxRequests').value = settings.max_requests_per_hour || 100;
-            document.getElementById('settingDelay').value = settings.delay_between_requests_min || 3;
-            document.getElementById('settingHeadless').value = settings.headless_mode ? 'true' : 'false';
-            document.getElementById('settingDeduplicate').value = settings.auto_deduplicate ? 'true' : 'false';
-
-            // Also load system health
-            loadSystemHealth();
-            return;
-        }
-    } catch (error) {
-        console.error('Error loading settings from API:', error);
-    }
-
-    // Fall back to localStorage
-    const settings = localStorage.getItem('scraperSettings');
-    if (settings) {
-        const parsed = JSON.parse(settings);
-        document.getElementById('settingMaxRequests').value = parsed.max_requests_per_hour || parsed.max_requests || 100;
-        document.getElementById('settingDelay').value = parsed.delay_between_requests_min || parsed.delay || 3;
-        document.getElementById('settingHeadless').value = (parsed.headless_mode !== undefined ? parsed.headless_mode : parsed.headless) ? 'true' : 'false';
-        document.getElementById('settingDeduplicate').value = (parsed.auto_deduplicate !== undefined ? parsed.auto_deduplicate : parsed.deduplicate) ? 'true' : 'false';
-    }
+    checkHealth();
 }
 
 async function saveSettings(event) {
     event.preventDefault();
 
     const settings = {
-        max_requests_per_hour: parseInt(document.getElementById('settingMaxRequests').value),
         delay_between_requests_min: parseFloat(document.getElementById('settingDelay').value),
         headless_mode: document.getElementById('settingHeadless').value === 'true',
         auto_deduplicate: document.getElementById('settingDeduplicate').value === 'true'
     };
 
-    try {
-        // Save to backend API
-        const response = await fetch(`${API_URL}/settings`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(settings)
-        });
-
-        if (response.ok) {
-            // Also save to localStorage as backup
-            localStorage.setItem('scraperSettings', JSON.stringify(settings));
-            showNotification('Settings saved successfully!', 'success');
-        } else {
-            throw new Error('Failed to save settings to server');
-        }
-    } catch (error) {
-        console.error('Error saving settings:', error);
-        // Still save to localStorage
-        localStorage.setItem('scraperSettings', JSON.stringify(settings));
-        showNotification('Settings saved locally (server unavailable)', 'warning');
-    }
+    localStorage.setItem('scraperSettings', JSON.stringify(settings));
+    showNotification('Settings saved!', 'success');
+    return false;
 }
 
-// Load system health information
-async function loadSystemHealth() {
+async function checkHealth() {
     try {
         const response = await fetch(`${API_URL}/health`);
         if (response.ok) {
             const health = await response.json();
 
-            // Update UI with health info if elements exist
-            const healthContainer = document.getElementById('systemHealth');
-            if (healthContainer) {
-                if (health.system && typeof health.system === 'object') {
-                    healthContainer.innerHTML = `
-                        <div class="health-item">
-                            <span class="label">CPU Usage:</span>
-                            <span class="value">${health.system.cpu_percent}%</span>
-                        </div>
-                        <div class="health-item">
-                            <span class="label">Memory Usage:</span>
-                            <span class="value">${health.system.memory_percent}% (${health.system.memory_used_gb}GB / ${health.system.memory_total_gb}GB)</span>
-                        </div>
-                        <div class="health-item">
-                            <span class="label">Disk Usage:</span>
-                            <span class="value">${health.system.disk_percent}% (${health.system.disk_free_gb}GB free)</span>
-                        </div>
-                        <div class="health-item">
-                            <span class="label">Database:</span>
-                            <span class="value ${health.database === 'healthy' ? 'text-success' : 'text-danger'}">${health.database}</span>
-                        </div>
-                        <div class="health-item">
-                            <span class="label">Active Scrapers:</span>
-                            <span class="value">${health.active_scrapers}</span>
-                        </div>
-                        <div class="health-item">
-                            <span class="label">WebSocket Connections:</span>
-                            <span class="value">${health.websocket_connections}</span>
-                        </div>
-                    `;
-                } else {
-                    healthContainer.innerHTML = `<p>System health: ${health.system || 'Unknown'}</p>`;
-                }
+            const apiEl = document.getElementById('health-api');
+            const dbEl = document.getElementById('health-db');
+            const versionEl = document.getElementById('health-version');
+
+            if (apiEl) {
+                apiEl.textContent = health.status === 'healthy' ? 'Online' : health.status;
+                apiEl.className = 'value ' + (health.status === 'healthy' ? 'good' : 'bad');
             }
+
+            if (dbEl) {
+                dbEl.textContent = health.database || 'Unknown';
+                dbEl.className = 'value ' + (health.database === 'connected' ? 'good' : 'warning');
+            }
+
+            if (versionEl) {
+                versionEl.textContent = health.version || '-';
+            }
+
+            // Update WebSocket status
+            const wsStatus = document.getElementById('wsStatus');
+            const wsDot = document.getElementById('wsStatusDot');
+            if (wsStatus) wsStatus.textContent = 'Connected';
+            if (wsDot) wsDot.classList.remove('disconnected');
         }
     } catch (error) {
-        console.error('Error loading system health:', error);
+        console.error('Health check failed:', error);
+        const apiEl = document.getElementById('health-api');
+        if (apiEl) {
+            apiEl.textContent = 'Offline';
+            apiEl.className = 'value bad';
+        }
     }
 }
 
@@ -641,27 +940,31 @@ function connectWebSocket() {
 
         ws.onopen = () => {
             console.log('WebSocket connected');
-            document.getElementById('wsStatus').textContent = 'Connected';
-            document.getElementById('wsStatus').className = 'badge badge-success';
+            const wsStatus = document.getElementById('wsStatus');
+            const wsDot = document.getElementById('wsStatusDot');
+            if (wsStatus) wsStatus.textContent = 'Connected';
+            if (wsDot) wsDot.classList.remove('disconnected');
         };
 
         ws.onmessage = (event) => {
-            const message = JSON.parse(event.data);
-            handleWebSocketMessage(message);
+            try {
+                const message = JSON.parse(event.data);
+                handleWebSocketMessage(message);
+            } catch (e) {
+                console.error('WS message parse error:', e);
+            }
         };
 
         ws.onerror = (error) => {
             console.error('WebSocket error:', error);
-            document.getElementById('wsStatus').textContent = 'Error';
-            document.getElementById('wsStatus').className = 'badge badge-danger';
         };
 
         ws.onclose = () => {
             console.log('WebSocket disconnected');
-            document.getElementById('wsStatus').textContent = 'Disconnected';
-            document.getElementById('wsStatus').className = 'badge badge-warning';
-
-            // Reconnect after 5 seconds
+            const wsStatus = document.getElementById('wsStatus');
+            const wsDot = document.getElementById('wsStatusDot');
+            if (wsStatus) wsStatus.textContent = 'Disconnected';
+            if (wsDot) wsDot.classList.add('disconnected');
             setTimeout(connectWebSocket, 5000);
         };
 
@@ -673,428 +976,35 @@ function connectWebSocket() {
 function handleWebSocketMessage(message) {
     console.log('WebSocket message:', message);
 
-    if (message.type === 'job_update') {
-        // Update job progress in real-time
+    if (message.type === 'job_update' || message.type === 'progress') {
         loadRecentJobs();
         if (document.getElementById('page-jobs').classList.contains('active')) {
             loadJobs();
         }
     }
 
-    if (message.type === 'job_completed') {
-        showNotification(`Job #${message.job_id} completed! ${message.results_count} leads scraped.`, 'success');
+    if (message.type === 'job_completed' || message.type === 'completed') {
+        showNotification(`Job completed! ${message.leads_scraped || message.results_count || 0} leads scraped.`, 'success');
         loadStats();
         loadRecentJobs();
     }
 
-    if (message.type === 'job_failed') {
-        showNotification(`Job #${message.job_id} failed: ${message.error}`, 'error');
+    if (message.type === 'job_failed' || message.type === 'failed') {
+        showNotification(`Job failed: ${message.error || 'Unknown error'}`, 'error');
         loadRecentJobs();
     }
-
-    if (message.type === 'new_lead') {
-        // Optionally refresh leads table
-        if (document.getElementById('page-leads').classList.contains('active')) {
-            loadLeads();
-        }
-    }
 }
 
-// Utility Functions
-function getStatusBadge(status) {
-    const badges = {
-        'completed': '<span class="badge badge-success">Completed</span>',
-        'running': '<span class="badge badge-info">Running</span>',
-        'pending': '<span class="badge badge-warning">Pending</span>',
-        'failed': '<span class="badge badge-danger">Failed</span>'
-    };
-    return badges[status] || '<span class="badge badge-secondary">' + status + '</span>';
-}
-
-function getQualityBadge(score) {
-    if (score >= 80) return `<span class="badge badge-success">${score}%</span>`;
-    if (score >= 60) return `<span class="badge badge-info">${score}%</span>`;
-    if (score >= 40) return `<span class="badge badge-warning">${score}%</span>`;
-    return `<span class="badge badge-danger">${score}%</span>`;
-}
-
-function getProgress(job) {
-    if (job.leads_target === 0) return 0;
-    return Math.min(100, (job.leads_scraped / job.leads_target) * 100);
-}
-
-function formatDate(dateString) {
-    if (!dateString) return '-';
-    const date = new Date(dateString);
-    return date.toLocaleString();
-}
-
-function showNotification(message, type = 'info') {
-    const notification = document.createElement('div');
-    notification.className = `notification ${type}`;
-
-    const icon = type === 'success' ? 'check-circle' :
-                 type === 'error' ? 'exclamation-circle' :
-                 type === 'warning' ? 'exclamation-triangle' : 'info-circle';
-
-    notification.innerHTML = `
-        <i class="fas fa-${icon}"></i>
-        <span>${message}</span>
-    `;
-
-    document.body.appendChild(notification);
-
-    setTimeout(() => {
-        notification.style.animation = 'slideIn 0.3s ease reverse';
-        setTimeout(() => notification.remove(), 300);
-    }, 5000);
-}
-
-function showLoading(show) {
-    const overlay = document.getElementById('loadingOverlay');
-    if (show) {
-        overlay.classList.add('active');
-    } else {
-        overlay.classList.remove('active');
-    }
-}
-
-function refreshData() {
-    loadStats();
-    loadRecentJobs();
-
-    const activePage = document.querySelector('.page.active').id.replace('page-', '');
-    if (activePage === 'jobs') loadJobs();
-    if (activePage === 'leads') loadLeads();
-    if (activePage === 'analytics') loadAnalytics();
-
-    showNotification('Data refreshed', 'success');
-}
-
-// Advanced Filter Functions
-function applyAdvancedFilters() {
-    showLoading(true);
-
-    // Build query parameters from all filter fields
-    const params = new URLSearchParams();
-
-    // General search
-    const generalSearch = document.getElementById('filterGeneralSearch').value;
-    if (generalSearch) params.append('search', generalSearch);
-
-    // Location filters
-    const city = document.getElementById('filterCity').value;
-    const state = document.getElementById('filterState').value;
-    const pinCode = document.getElementById('filterPinCode').value;
-    if (city) params.append('city', city);
-    if (state) params.append('state', state);
-    if (pinCode) params.append('pin_code', pinCode);
-
-    // Contact filters
-    if (document.getElementById('filterHasPhone').checked) params.append('has_phone', 'true');
-    if (document.getElementById('filterHasEmail').checked) params.append('has_email', 'true');
-    if (document.getElementById('filterHasWebsite').checked) params.append('has_website', 'true');
-
-    // Category filters
-    const category = document.getElementById('filterCategory').value;
-    const searchQuery = document.getElementById('filterSearchQuery').value;
-    if (category) params.append('category', category);
-    if (searchQuery) params.append('search_query', searchQuery);
-
-    // Quality & Rating filters
-    const minQuality = document.getElementById('filterMinQuality').value;
-    const maxQuality = document.getElementById('filterMaxQuality').value;
-    const minRating = document.getElementById('filterMinRating').value;
-    const maxRating = document.getElementById('filterMaxRating').value;
-    const minReviews = document.getElementById('filterMinReviews').value;
-    const priceLevel = document.getElementById('filterPriceLevel').value;
-
-    if (minQuality) params.append('min_quality', minQuality);
-    if (maxQuality) params.append('max_quality', maxQuality);
-    if (minRating) params.append('min_rating', minRating);
-    if (maxRating) params.append('max_rating', maxRating);
-    if (minReviews) params.append('min_reviews', minReviews);
-    if (priceLevel) params.append('price_level', priceLevel);
-
-    // Social media filters
-    if (document.getElementById('filterHasFacebook').checked) params.append('has_facebook', 'true');
-    if (document.getElementById('filterHasInstagram').checked) params.append('has_instagram', 'true');
-    if (document.getElementById('filterHasTwitter').checked) params.append('has_twitter', 'true');
-    if (document.getElementById('filterHasLinkedIn').checked) params.append('has_linkedin', 'true');
-
-    // Fetch filtered leads
-    fetch(`${API_URL}/leads?${params.toString()}`)
-        .then(response => response.json())
-        .then(leads => {
-            // Update table
-            const tbody = document.getElementById('leadsBody');
-            tbody.innerHTML = leads.map((lead, index) => `
-                <tr>
-                    <td><input type="checkbox" class="lead-select" data-id="${lead.id}"></td>
-                    <td><strong>${lead.business_name}</strong></td>
-                    <td>${lead.category || '-'}</td>
-                    <td>${lead.city || '-'}</td>
-                    <td>${lead.phone ? `<a href="tel:${lead.phone}">${lead.phone}</a>` : '-'}</td>
-                    <td>${lead.email || '-'}</td>
-                    <td>${lead.website ? `<a href="${lead.website}" target="_blank"><i class="fas fa-external-link-alt"></i></a>` : '-'}</td>
-                    <td>${lead.rating ? lead.rating + ' ★' : '-'}</td>
-                    <td>${getQualityBadge(lead.data_quality_score)}</td>
-                    <td>
-                        <button class="action-btn" onclick="viewLeadDetails(${lead.id})" title="View Details">
-                            <i class="fas fa-eye"></i>
-                        </button>
-                        <button class="action-btn" onclick="deleteLead(${lead.id})" title="Delete">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </td>
-                </tr>
-            `).join('');
-
-            // Reinitialize DataTable
-            if (leadsDataTable) {
-                leadsDataTable.destroy();
-            }
-            leadsDataTable = new DataTable('#leadsTable', {
-                order: [[8, 'desc']], // Sort by quality
-                pageLength: 50
-            });
-
-            // Show filter summary
-            updateFilterSummary(params);
-            showNotification(`Found ${leads.length} leads matching your filters`, 'success');
-            showLoading(false);
-        })
-        .catch(error => {
-            console.error('Error applying filters:', error);
-            showNotification('Failed to apply filters', 'error');
-            showLoading(false);
-        });
-}
-
-function clearFilters() {
-    // Clear all filter inputs
-    document.getElementById('filterGeneralSearch').value = '';
-    document.getElementById('filterCity').value = '';
-    document.getElementById('filterState').value = '';
-    document.getElementById('filterPinCode').value = '';
-    document.getElementById('filterCategory').value = '';
-    document.getElementById('filterSearchQuery').value = '';
-    document.getElementById('filterMinQuality').value = '';
-    document.getElementById('filterMaxQuality').value = '';
-    document.getElementById('filterMinRating').value = '';
-    document.getElementById('filterMaxRating').value = '';
-    document.getElementById('filterMinReviews').value = '';
-    document.getElementById('filterPriceLevel').value = '';
-
-    // Clear checkboxes
-    document.getElementById('filterHasPhone').checked = false;
-    document.getElementById('filterHasEmail').checked = false;
-    document.getElementById('filterHasWebsite').checked = false;
-    document.getElementById('filterHasFacebook').checked = false;
-    document.getElementById('filterHasInstagram').checked = false;
-    document.getElementById('filterHasTwitter').checked = false;
-    document.getElementById('filterHasLinkedIn').checked = false;
-
-    // Hide filter summary
-    document.getElementById('filterSummary').style.display = 'none';
-
-    // Reload all leads
-    loadLeads();
-    showNotification('Filters cleared', 'success');
-}
-
-function updateFilterSummary(params) {
-    const summary = document.getElementById('filterSummary');
-    const tagsContainer = document.getElementById('filterTags');
-
-    if (params.toString()) {
-        const tags = [];
-
-        // Build filter tags
-        for (const [key, value] of params.entries()) {
-            let label = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-            let displayValue = value === 'true' ? '✓' : value;
-            tags.push(`
-                <span class="badge badge-info" style="cursor: pointer;" onclick="removeFilter('${key}')">
-                    ${label}: ${displayValue}
-                    <i class="fas fa-times" style="margin-left: 0.25rem;"></i>
-                </span>
-            `);
-        }
-
-        tagsContainer.innerHTML = tags.join('');
-        summary.style.display = 'block';
-    } else {
-        summary.style.display = 'none';
-    }
-}
-
-function removeFilter(filterKey) {
-    // Map filter key to input element
-    const filterMap = {
-        'search': 'filterGeneralSearch',
-        'city': 'filterCity',
-        'state': 'filterState',
-        'pin_code': 'filterPinCode',
-        'category': 'filterCategory',
-        'search_query': 'filterSearchQuery',
-        'min_quality': 'filterMinQuality',
-        'max_quality': 'filterMaxQuality',
-        'min_rating': 'filterMinRating',
-        'max_rating': 'filterMaxRating',
-        'min_reviews': 'filterMinReviews',
-        'price_level': 'filterPriceLevel',
-        'has_phone': 'filterHasPhone',
-        'has_email': 'filterHasEmail',
-        'has_website': 'filterHasWebsite',
-        'has_facebook': 'filterHasFacebook',
-        'has_instagram': 'filterHasInstagram',
-        'has_twitter': 'filterHasTwitter',
-        'has_linkedin': 'filterHasLinkedIn'
-    };
-
-    const elementId = filterMap[filterKey];
-    if (elementId) {
-        const element = document.getElementById(elementId);
-        if (element.type === 'checkbox') {
-            element.checked = false;
-        } else {
-            element.value = '';
-        }
-    }
-
-    // Reapply filters
-    applyAdvancedFilters();
-}
-
-function saveFilterPreset() {
-    const presetName = prompt('Enter a name for this filter preset:');
-    if (!presetName) return;
-
-    const preset = {
-        generalSearch: document.getElementById('filterGeneralSearch').value,
-        city: document.getElementById('filterCity').value,
-        state: document.getElementById('filterState').value,
-        pinCode: document.getElementById('filterPinCode').value,
-        category: document.getElementById('filterCategory').value,
-        searchQuery: document.getElementById('filterSearchQuery').value,
-        minQuality: document.getElementById('filterMinQuality').value,
-        maxQuality: document.getElementById('filterMaxQuality').value,
-        minRating: document.getElementById('filterMinRating').value,
-        maxRating: document.getElementById('filterMaxRating').value,
-        minReviews: document.getElementById('filterMinReviews').value,
-        priceLevel: document.getElementById('filterPriceLevel').value,
-        hasPhone: document.getElementById('filterHasPhone').checked,
-        hasEmail: document.getElementById('filterHasEmail').checked,
-        hasWebsite: document.getElementById('filterHasWebsite').checked,
-        hasFacebook: document.getElementById('filterHasFacebook').checked,
-        hasInstagram: document.getElementById('filterHasInstagram').checked,
-        hasTwitter: document.getElementById('filterHasTwitter').checked,
-        hasLinkedIn: document.getElementById('filterHasLinkedIn').checked
-    };
-
-    // Save to localStorage
-    const presets = JSON.parse(localStorage.getItem('filterPresets') || '{}');
-    presets[presetName] = preset;
-    localStorage.setItem('filterPresets', JSON.stringify(presets));
-
-    showNotification(`Filter preset "${presetName}" saved!`, 'success');
-}
-
-// Load smart filter presets from API
-async function loadFilterPresets() {
-    try {
-        const response = await fetch(`${API_URL}/filter-presets`);
-        if (response.ok) {
-            const data = await response.json();
-            return data.presets;
-        }
-    } catch (error) {
-        console.error('Error loading filter presets:', error);
-    }
-    return {};
-}
-
-// Apply a smart filter preset
-async function applyFilterPreset(presetKey) {
-    const presets = await loadFilterPresets();
-    const preset = presets[presetKey];
-
-    if (!preset) {
-        showNotification('Preset not found', 'error');
-        return;
-    }
-
-    // Clear existing filters
-    clearFilters();
-
-    // Apply preset filters
-    const filters = preset.filters;
-
-    if (filters.min_quality) {
-        document.getElementById('filterMinQuality').value = filters.min_quality;
-    }
-    if (filters.has_phone) {
-        document.getElementById('filterHasPhone').checked = true;
-    }
-    if (filters.has_email) {
-        document.getElementById('filterHasEmail').checked = true;
-    }
-    if (filters.has_website) {
-        document.getElementById('filterHasWebsite').checked = true;
-    }
-    if (filters.has_facebook) {
-        document.getElementById('filterHasFacebook').checked = true;
-    }
-    if (filters.min_rating) {
-        document.getElementById('filterMinRating').value = filters.min_rating;
-    }
-    if (filters.min_reviews) {
-        document.getElementById('filterMinReviews').value = filters.min_reviews;
-    }
-
-    // Apply the filters
-    applyAdvancedFilters();
-    showNotification(`Applied preset: ${preset.name}`, 'success');
-}
-
-// Quick filter buttons for common presets
-function initQuickFilters() {
-    const quickFiltersHtml = `
-        <div class="quick-filters" style="margin-bottom: 1rem;">
-            <span style="font-weight: 500; margin-right: 0.5rem;">Quick Filters:</span>
-            <button class="btn btn-sm btn-outline" onclick="applyFilterPreset('high_quality')">High Quality</button>
-            <button class="btn btn-sm btn-outline" onclick="applyFilterPreset('cold_call_ready')">Cold Call Ready</button>
-            <button class="btn btn-sm btn-outline" onclick="applyFilterPreset('email_campaign')">Email Campaign</button>
-            <button class="btn btn-sm btn-outline" onclick="applyFilterPreset('complete_contact')">Complete Contact</button>
-            <button class="btn btn-sm btn-outline" onclick="applyFilterPreset('top_rated')">Top Rated</button>
-        </div>
-    `;
-
-    // Insert quick filters before the leads table filter section if it exists
-    const filterSection = document.querySelector('.leads-filter-section, .filter-section, #leadsFilters');
-    if (filterSection) {
-        filterSection.insertAdjacentHTML('afterbegin', quickFiltersHtml);
-    }
-}
-
-// Legacy function for backward compatibility
-function applyFilters() {
-    applyAdvancedFilters();
-}
-
-// View lead details
+// View Lead Details
 async function viewLeadDetails(id) {
     try {
         showLoading(true);
         const response = await fetch(`${API_URL}/leads/${id}`);
-
-        if (!response.ok) throw new Error('Failed to load lead details');
+        if (!response.ok) throw new Error('Failed to load lead');
 
         const lead = await response.json();
         showLoading(false);
 
-        // Create modal HTML
         const modalHtml = `
             <div class="modal-overlay" id="leadModal" onclick="closeModal(event)">
                 <div class="modal-content" onclick="event.stopPropagation()">
@@ -1112,82 +1022,40 @@ async function viewLeadDetails(id) {
                             </div>
                             <div class="detail-section">
                                 <h3>Location</h3>
-                                <div class="detail-row"><span class="label">Address:</span> <span>${lead.full_address || 'N/A'}</span></div>
+                                <div class="detail-row"><span class="label">Address:</span> <span>${lead.address || 'N/A'}</span></div>
                                 <div class="detail-row"><span class="label">City:</span> <span>${lead.city || 'N/A'}</span></div>
                                 <div class="detail-row"><span class="label">State:</span> <span>${lead.state || 'N/A'}</span></div>
-                                <div class="detail-row"><span class="label">Pin Code:</span> <span>${lead.pin_code || 'N/A'}</span></div>
+                                <div class="detail-row"><span class="label">Pin Code:</span> <span>${lead.pincode || 'N/A'}</span></div>
                             </div>
                             <div class="detail-section">
                                 <h3>Business Info</h3>
                                 <div class="detail-row"><span class="label">Category:</span> <span>${lead.category || 'N/A'}</span></div>
                                 <div class="detail-row"><span class="label">Rating:</span> <span>${lead.rating ? lead.rating + ' ★' : 'N/A'}</span></div>
                                 <div class="detail-row"><span class="label">Reviews:</span> <span>${lead.review_count || 'N/A'}</span></div>
-                                <div class="detail-row"><span class="label">Price Level:</span> <span>${lead.price_level || 'N/A'}</span></div>
-                                <div class="detail-row"><span class="label">Quality Score:</span> <span>${getQualityBadge(lead.data_quality_score)}</span></div>
+                                <div class="detail-row"><span class="label">Quality:</span> <span>${getQualityBadge(lead.quality_score)}</span></div>
                             </div>
                             <div class="detail-section">
                                 <h3>Social Media</h3>
-                                <div class="detail-row"><span class="label">Facebook:</span> <span>${lead.social_facebook ? `<a href="${lead.social_facebook}" target="_blank">View</a>` : 'N/A'}</span></div>
-                                <div class="detail-row"><span class="label">Instagram:</span> <span>${lead.social_instagram ? `<a href="${lead.social_instagram}" target="_blank">View</a>` : 'N/A'}</span></div>
-                                <div class="detail-row"><span class="label">Twitter:</span> <span>${lead.social_twitter ? `<a href="${lead.social_twitter}" target="_blank">View</a>` : 'N/A'}</span></div>
-                                <div class="detail-row"><span class="label">LinkedIn:</span> <span>${lead.social_linkedin ? `<a href="${lead.social_linkedin}" target="_blank">View</a>` : 'N/A'}</span></div>
-                            </div>
-                            <div class="detail-section">
-                                <h3>Business Hours</h3>
-                                <div class="detail-row"><span class="label">Monday:</span> <span>${lead.hours_monday || 'N/A'}</span></div>
-                                <div class="detail-row"><span class="label">Tuesday:</span> <span>${lead.hours_tuesday || 'N/A'}</span></div>
-                                <div class="detail-row"><span class="label">Wednesday:</span> <span>${lead.hours_wednesday || 'N/A'}</span></div>
-                                <div class="detail-row"><span class="label">Thursday:</span> <span>${lead.hours_thursday || 'N/A'}</span></div>
-                                <div class="detail-row"><span class="label">Friday:</span> <span>${lead.hours_friday || 'N/A'}</span></div>
-                                <div class="detail-row"><span class="label">Saturday:</span> <span>${lead.hours_saturday || 'N/A'}</span></div>
-                                <div class="detail-row"><span class="label">Sunday:</span> <span>${lead.hours_sunday || 'N/A'}</span></div>
-                            </div>
-                            <div class="detail-section">
-                                <h3>Metadata</h3>
-                                <div class="detail-row"><span class="label">Place ID:</span> <span>${lead.place_id || 'N/A'}</span></div>
-                                <div class="detail-row"><span class="label">Maps URL:</span> <span>${lead.maps_url ? `<a href="${lead.maps_url}" target="_blank">Open in Maps</a>` : 'N/A'}</span></div>
-                                <div class="detail-row"><span class="label">Coordinates:</span> <span>${lead.latitude && lead.longitude ? `${lead.latitude}, ${lead.longitude}` : 'N/A'}</span></div>
-                                <div class="detail-row"><span class="label">Scraped At:</span> <span>${formatDate(lead.scraped_at)}</span></div>
-                                <div class="detail-row"><span class="label">Search Query:</span> <span>${lead.search_query || 'N/A'}</span></div>
+                                <div class="detail-row"><span class="label">Facebook:</span> <span>${lead.facebook ? `<a href="${lead.facebook}" target="_blank">View</a>` : 'N/A'}</span></div>
+                                <div class="detail-row"><span class="label">Instagram:</span> <span>${lead.instagram ? `<a href="${lead.instagram}" target="_blank">View</a>` : 'N/A'}</span></div>
+                                <div class="detail-row"><span class="label">LinkedIn:</span> <span>${lead.linkedin ? `<a href="${lead.linkedin}" target="_blank">View</a>` : 'N/A'}</span></div>
+                                <div class="detail-row"><span class="label">Twitter:</span> <span>${lead.twitter ? `<a href="${lead.twitter}" target="_blank">View</a>` : 'N/A'}</span></div>
                             </div>
                         </div>
                     </div>
                     <div class="modal-footer">
                         <button class="btn btn-secondary" onclick="closeLeadModal()">Close</button>
-                        <button class="btn btn-primary" onclick="editLead(${lead.id})">Edit</button>
+                        ${lead.maps_url ? `<a href="${lead.maps_url}" target="_blank" class="btn btn-primary"><i class="fas fa-map-marker-alt"></i> Open in Maps</a>` : ''}
                     </div>
                 </div>
             </div>
         `;
 
-        // Add modal to page
         document.body.insertAdjacentHTML('beforeend', modalHtml);
-
-        // Add modal styles if not already present
-        if (!document.getElementById('modalStyles')) {
-            const styles = document.createElement('style');
-            styles.id = 'modalStyles';
-            styles.textContent = `
-                .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-                .modal-content { background: var(--card-bg, #fff); border-radius: 12px; width: 90%; max-width: 900px; max-height: 90vh; overflow: hidden; display: flex; flex-direction: column; }
-                .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.5rem; border-bottom: 1px solid var(--border-color, #e0e0e0); }
-                .modal-header h2 { margin: 0; font-size: 1.25rem; }
-                .modal-close { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-secondary, #666); }
-                .modal-body { padding: 1.5rem; overflow-y: auto; flex: 1; }
-                .modal-footer { padding: 1rem 1.5rem; border-top: 1px solid var(--border-color, #e0e0e0); display: flex; justify-content: flex-end; gap: 0.5rem; }
-                .lead-details-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; }
-                .detail-section { background: var(--bg-secondary, #f5f5f5); padding: 1rem; border-radius: 8px; }
-                .detail-section h3 { margin: 0 0 0.75rem 0; font-size: 0.875rem; text-transform: uppercase; color: var(--text-secondary, #666); }
-                .detail-row { display: flex; justify-content: space-between; padding: 0.375rem 0; border-bottom: 1px solid var(--border-color, #e0e0e0); }
-                .detail-row:last-child { border-bottom: none; }
-                .detail-row .label { font-weight: 500; color: var(--text-secondary, #666); }
-            `;
-            document.head.appendChild(styles);
-        }
 
     } catch (error) {
         showLoading(false);
-        console.error('Error loading lead details:', error);
+        console.error('Error loading lead:', error);
         showNotification('Failed to load lead details', 'error');
     }
 }
@@ -1203,144 +1071,21 @@ function closeModal(event) {
     }
 }
 
-// Edit lead (shows edit form)
-async function editLead(id) {
-    closeLeadModal();
-
-    try {
-        showLoading(true);
-        const response = await fetch(`${API_URL}/leads/${id}`);
-
-        if (!response.ok) throw new Error('Failed to load lead');
-
-        const lead = await response.json();
-        showLoading(false);
-
-        // Create edit modal HTML
-        const modalHtml = `
-            <div class="modal-overlay" id="editLeadModal" onclick="closeModal(event)">
-                <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 600px;">
-                    <div class="modal-header">
-                        <h2>Edit Lead</h2>
-                        <button class="modal-close" onclick="closeEditLeadModal()">&times;</button>
-                    </div>
-                    <div class="modal-body">
-                        <form id="editLeadForm" onsubmit="submitEditLead(event, ${id})">
-                            <div class="form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                                <div class="form-group">
-                                    <label>Business Name</label>
-                                    <input type="text" id="editBusinessName" value="${lead.business_name || ''}" class="form-control">
-                                </div>
-                                <div class="form-group">
-                                    <label>Category</label>
-                                    <input type="text" id="editCategory" value="${lead.category || ''}" class="form-control">
-                                </div>
-                                <div class="form-group">
-                                    <label>Phone</label>
-                                    <input type="text" id="editPhone" value="${lead.phone || ''}" class="form-control">
-                                </div>
-                                <div class="form-group">
-                                    <label>Email</label>
-                                    <input type="email" id="editEmail" value="${lead.email || ''}" class="form-control">
-                                </div>
-                                <div class="form-group" style="grid-column: span 2;">
-                                    <label>Website</label>
-                                    <input type="url" id="editWebsite" value="${lead.website || ''}" class="form-control">
-                                </div>
-                                <div class="form-group" style="grid-column: span 2;">
-                                    <label>Full Address</label>
-                                    <input type="text" id="editFullAddress" value="${lead.full_address || ''}" class="form-control">
-                                </div>
-                                <div class="form-group">
-                                    <label>City</label>
-                                    <input type="text" id="editCity" value="${lead.city || ''}" class="form-control">
-                                </div>
-                                <div class="form-group">
-                                    <label>State</label>
-                                    <input type="text" id="editState" value="${lead.state || ''}" class="form-control">
-                                </div>
-                                <div class="form-group">
-                                    <label>Pin Code</label>
-                                    <input type="text" id="editPinCode" value="${lead.pin_code || ''}" class="form-control">
-                                </div>
-                            </div>
-                        </form>
-                    </div>
-                    <div class="modal-footer">
-                        <button class="btn btn-secondary" onclick="closeEditLeadModal()">Cancel</button>
-                        <button class="btn btn-primary" onclick="document.getElementById('editLeadForm').dispatchEvent(new Event('submit'))">Save Changes</button>
-                    </div>
-                </div>
-            </div>
-        `;
-
-        document.body.insertAdjacentHTML('beforeend', modalHtml);
-
-    } catch (error) {
-        showLoading(false);
-        console.error('Error loading lead for edit:', error);
-        showNotification('Failed to load lead for editing', 'error');
-    }
-}
-
-function closeEditLeadModal() {
-    const modal = document.getElementById('editLeadModal');
-    if (modal) modal.remove();
-}
-
-async function submitEditLead(event, id) {
-    event.preventDefault();
-
-    const updateData = {
-        business_name: document.getElementById('editBusinessName').value || null,
-        category: document.getElementById('editCategory').value || null,
-        phone: document.getElementById('editPhone').value || null,
-        email: document.getElementById('editEmail').value || null,
-        website: document.getElementById('editWebsite').value || null,
-        full_address: document.getElementById('editFullAddress').value || null,
-        city: document.getElementById('editCity').value || null,
-        state: document.getElementById('editState').value || null,
-        pin_code: document.getElementById('editPinCode').value || null
-    };
-
-    try {
-        showLoading(true);
-        const response = await fetch(`${API_URL}/leads/${id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(updateData)
-        });
-
-        if (!response.ok) throw new Error('Update failed');
-
-        showNotification('Lead updated successfully', 'success');
-        closeEditLeadModal();
-        loadLeads();
-        showLoading(false);
-
-    } catch (error) {
-        showLoading(false);
-        console.error('Error updating lead:', error);
-        showNotification('Failed to update lead: ' + error.message, 'error');
-    }
-}
-
-// View job details
+// View Job Details
 async function viewJobDetails(id) {
     try {
         showLoading(true);
         const response = await fetch(`${API_URL}/jobs/${id}`);
-
-        if (!response.ok) throw new Error('Failed to load job details');
+        if (!response.ok) throw new Error('Failed to load job');
 
         const job = await response.json();
         showLoading(false);
 
         const modalHtml = `
             <div class="modal-overlay" id="jobModal" onclick="closeModal(event)">
-                <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 600px;">
+                <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 500px;">
                     <div class="modal-header">
-                        <h2>Job #${job.id} Details</h2>
+                        <h2>Job #${job.job_id} Details</h2>
                         <button class="modal-close" onclick="closeJobModal()">&times;</button>
                     </div>
                     <div class="modal-body">
@@ -1348,19 +1093,15 @@ async function viewJobDetails(id) {
                             <div class="detail-row"><span class="label">Search Query:</span> <span>${job.search_query}</span></div>
                             <div class="detail-row"><span class="label">Location:</span> <span>${job.location || 'N/A'}</span></div>
                             <div class="detail-row"><span class="label">Status:</span> <span>${getStatusBadge(job.status)}</span></div>
-                            <div class="detail-row"><span class="label">Progress:</span> <span>${job.leads_scraped} / ${job.leads_target}</span></div>
-                            <div class="detail-row"><span class="label">Error Count:</span> <span>${job.error_count}</span></div>
-                            <div class="detail-row"><span class="label">Last Error:</span> <span>${job.last_error || 'None'}</span></div>
-                            <div class="detail-row"><span class="label">Started At:</span> <span>${formatDate(job.started_at)}</span></div>
-                            <div class="detail-row"><span class="label">Completed At:</span> <span>${job.completed_at ? formatDate(job.completed_at) : 'N/A'}</span></div>
-                            <div class="detail-row"><span class="label">Created At:</span> <span>${formatDate(job.created_at)}</span></div>
+                            <div class="detail-row"><span class="label">Progress:</span> <span>${job.results_count || 0} / ${job.max_results}</span></div>
+                            <div class="detail-row"><span class="label">Error:</span> <span>${job.error_message || 'None'}</span></div>
+                            <div class="detail-row"><span class="label">Started:</span> <span>${formatDate(job.started_at)}</span></div>
+                            <div class="detail-row"><span class="label">Completed:</span> <span>${job.completed_at ? formatDate(job.completed_at) : 'N/A'}</span></div>
                         </div>
                     </div>
                     <div class="modal-footer">
                         <button class="btn btn-secondary" onclick="closeJobModal()">Close</button>
-                        ${job.status === 'failed' ? `<button class="btn btn-primary" onclick="retryJob(${job.id}); closeJobModal();">Retry Job</button>` : ''}
-                        ${job.status === 'running' ? `<button class="btn btn-warning" onclick="pauseJob(${job.id}); closeJobModal();">Pause</button>` : ''}
-                        ${job.status === 'paused' ? `<button class="btn btn-success" onclick="resumeJob(${job.id}); closeJobModal();">Resume</button>` : ''}
+                        ${job.status === 'failed' ? `<button class="btn btn-primary" onclick="retryJob(${job.job_id}); closeJobModal();">Retry</button>` : ''}
                     </div>
                 </div>
             </div>
@@ -1370,7 +1111,7 @@ async function viewJobDetails(id) {
 
     } catch (error) {
         showLoading(false);
-        console.error('Error loading job details:', error);
+        console.error('Error loading job:', error);
         showNotification('Failed to load job details', 'error');
     }
 }
@@ -1380,14 +1121,11 @@ function closeJobModal() {
     if (modal) modal.remove();
 }
 
-// Retry job
+// Job Actions
 async function retryJob(id) {
     try {
         showLoading(true);
-        const response = await fetch(`${API_URL}/jobs/${id}/retry`, {
-            method: 'POST'
-        });
-
+        const response = await fetch(`${API_URL}/jobs/${id}/retry`, { method: 'POST' });
         if (!response.ok) throw new Error('Retry failed');
 
         showNotification(`Job #${id} queued for retry`, 'success');
@@ -1398,61 +1136,16 @@ async function retryJob(id) {
     } catch (error) {
         showLoading(false);
         console.error('Error retrying job:', error);
-        showNotification('Failed to retry job: ' + error.message, 'error');
+        showNotification('Failed to retry job', 'error');
     }
 }
 
-// Pause job
-async function pauseJob(id) {
-    try {
-        const response = await fetch(`${API_URL}/jobs/${id}/pause`, {
-            method: 'POST'
-        });
-
-        if (!response.ok) throw new Error('Pause failed');
-
-        showNotification(`Job #${id} paused`, 'success');
-        loadJobs();
-        loadRecentJobs();
-
-    } catch (error) {
-        console.error('Error pausing job:', error);
-        showNotification('Failed to pause job: ' + error.message, 'error');
-    }
-}
-
-// Resume job
-async function resumeJob(id) {
-    try {
-        const response = await fetch(`${API_URL}/jobs/${id}/resume`, {
-            method: 'POST'
-        });
-
-        if (!response.ok) throw new Error('Resume failed');
-
-        showNotification(`Job #${id} resumed`, 'success');
-        loadJobs();
-        loadRecentJobs();
-
-    } catch (error) {
-        console.error('Error resuming job:', error);
-        showNotification('Failed to resume job: ' + error.message, 'error');
-    }
-}
-
-// Delete job
 async function deleteJob(id) {
     if (!confirm('Are you sure you want to delete this job?')) return;
 
     try {
-        const response = await fetch(`${API_URL}/jobs/${id}`, {
-            method: 'DELETE'
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || 'Delete failed');
-        }
+        const response = await fetch(`${API_URL}/jobs/${id}`, { method: 'DELETE' });
+        if (!response.ok) throw new Error('Delete failed');
 
         showNotification(`Job #${id} deleted`, 'success');
         loadJobs();
@@ -1460,73 +1153,570 @@ async function deleteJob(id) {
 
     } catch (error) {
         console.error('Error deleting job:', error);
-        showNotification('Failed to delete job: ' + error.message, 'error');
+        showNotification('Failed to delete job', 'error');
     }
 }
 
-// Delete lead
 async function deleteLead(id) {
     if (!confirm('Are you sure you want to delete this lead?')) return;
 
     try {
-        const response = await fetch(`${API_URL}/leads/${id}`, {
-            method: 'DELETE'
-        });
-
+        const response = await fetch(`${API_URL}/leads/${id}`, { method: 'DELETE' });
         if (!response.ok) throw new Error('Delete failed');
 
-        showNotification('Lead deleted successfully', 'success');
-        loadLeads();
+        showNotification('Lead deleted', 'success');
+        loadLeads(currentLeadsPage);
         loadStats();
 
     } catch (error) {
+        console.error('Error deleting lead:', error);
         showNotification('Failed to delete lead', 'error');
     }
 }
 
-// Export selected leads
-async function showExportModal() {
-    const selected = document.querySelectorAll('.lead-select:checked');
-    if (selected.length === 0) {
-        showNotification('Please select leads to export', 'warning');
+// Utility Functions
+function getStatusBadge(status) {
+    const badges = {
+        'completed': '<span class="badge badge-success">Completed</span>',
+        'running': '<span class="badge badge-info">Running</span>',
+        'pending': '<span class="badge badge-warning">Pending</span>',
+        'failed': '<span class="badge badge-danger">Failed</span>',
+        'paused': '<span class="badge badge-secondary">Paused</span>'
+    };
+    return badges[status] || `<span class="badge badge-secondary">${status}</span>`;
+}
+
+function getQualityBadge(score) {
+    score = score || 0;
+    if (score >= 70) return `<span class="badge badge-success">${score}%</span>`;
+    if (score >= 40) return `<span class="badge badge-warning">${score}%</span>`;
+    return `<span class="badge badge-danger">${score}%</span>`;
+}
+
+function getProgress(job) {
+    const target = job.max_results || 0;
+    const current = job.results_count || 0;
+    if (target === 0) return 0;
+    return Math.min(100, (current / target) * 100);
+}
+
+function formatDate(dateString) {
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    return date.toLocaleString();
+}
+
+function formatBytes(bytes) {
+    if (!bytes) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function showNotification(message, type = 'info') {
+    const container = document.getElementById('toastContainer');
+    if (!container) {
+        console.log(`[${type.toUpperCase()}] ${message}`);
         return;
     }
 
-    const leadIds = Array.from(selected).map(cb => parseInt(cb.dataset.id));
+    const icons = {
+        success: 'check-circle',
+        error: 'exclamation-circle',
+        warning: 'exclamation-triangle',
+        info: 'info-circle'
+    };
 
-    // Show format selection modal
-    const format = prompt('Enter export format (csv or json):', 'csv');
-    if (!format) return;
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.innerHTML = `
+        <div class="toast-icon"><i class="fas fa-${icons[type] || 'info-circle'}"></i></div>
+        <div class="toast-content">
+            <div class="toast-title">${type.charAt(0).toUpperCase() + type.slice(1)}</div>
+            <div class="toast-message">${message}</div>
+        </div>
+        <button class="toast-close" onclick="this.parentElement.remove()">&times;</button>
+    `;
 
-    if (!['csv', 'json'].includes(format.toLowerCase())) {
-        showNotification('Invalid format. Use csv or json.', 'error');
-        return;
+    container.appendChild(toast);
+    setTimeout(() => {
+        toast.style.animation = 'slideOut 0.3s ease forwards';
+        setTimeout(() => toast.remove(), 300);
+    }, 5000);
+}
+
+function showLoading(show) {
+    const overlay = document.getElementById('loadingOverlay');
+    if (overlay) {
+        if (show) overlay.classList.add('active');
+        else overlay.classList.remove('active');
+    }
+}
+
+function refreshData() {
+    loadStats();
+    loadRecentJobs();
+
+    const activePage = document.querySelector('.page.active');
+    if (activePage) {
+        const pageId = activePage.id.replace('page-', '');
+        if (pageId === 'jobs') loadJobs();
+        if (pageId === 'leads') loadLeads(currentLeadsPage);
+        if (pageId === 'analytics') loadAnalytics();
+        if (pageId === 'export') loadExports();
+    }
+
+    showNotification('Data refreshed', 'success');
+}
+
+function resetForm() {
+    const form = document.getElementById('scrapeForm');
+    if (form) {
+        form.reset();
+        if (document.getElementById('headlessMode')) document.getElementById('headlessMode').checked = true;
+        if (document.getElementById('deduplicateResults')) document.getElementById('deduplicateResults').checked = true;
+
+        document.querySelectorAll('.feature-card').forEach(card => {
+            const input = card.querySelector('input[type="hidden"]');
+            if (input) {
+                if (['extractEmails', 'extractSocial', 'extractInsights'].includes(input.id)) {
+                    card.classList.add('active');
+                    input.value = 'true';
+                } else {
+                    card.classList.remove('active');
+                    input.value = 'false';
+                }
+            }
+        });
+
+        showNotification('Form reset', 'info');
+    }
+}
+
+// Add CSS animation for toast close
+const style = document.createElement('style');
+style.textContent = `@keyframes slideOut { from { transform: translateX(0); opacity: 1; } to { transform: translateX(100%); opacity: 0; } }`;
+document.head.appendChild(style);
+
+// ==================== NEW FEATURES (v2.0) ====================
+
+// Geo Search
+function setGeoLocation(lat, lng) {
+    document.getElementById('geoLat').value = lat;
+    document.getElementById('geoLng').value = lng;
+}
+
+async function startGeoSearch(event) {
+    event.preventDefault();
+
+    const data = {
+        search_query: document.getElementById('geoQuery').value.trim(),
+        latitude: parseFloat(document.getElementById('geoLat').value),
+        longitude: parseFloat(document.getElementById('geoLng').value),
+        radius_km: parseFloat(document.getElementById('geoRadius').value) || 5,
+        grid_size: parseInt(document.getElementById('geoGrid').value) || 3,
+        max_results: parseInt(document.getElementById('geoMaxResults').value) || 50,
+        extract_emails: true,
+        extract_social: true
+    };
+
+    try {
+        showLoading(true);
+        const response = await fetch(`${API_URL}/geo-scrape`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) throw new Error(result.detail || 'Geo search failed');
+
+        showNotification(`Geo search started! Job #${result.job_id} - ${result.grid_points} grid points`, 'success');
+        document.getElementById('geoSearchForm').reset();
+        setTimeout(() => showPage('jobs'), 1500);
+
+    } catch (error) {
+        console.error('Geo search error:', error);
+        showNotification('Geo search failed: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+
+    return false;
+}
+
+// Webhooks
+async function registerWebhook(event) {
+    event.preventDefault();
+
+    const events = Array.from(document.querySelectorAll('input[name="webhookEvents"]:checked'))
+        .map(cb => cb.value);
+
+    const data = {
+        name: document.getElementById('webhookName').value.trim(),
+        url: document.getElementById('webhookUrl').value.trim(),
+        secret: document.getElementById('webhookSecret').value.trim() || null,
+        events: events.length > 0 ? events : ['job.completed', 'lead.created']
+    };
+
+    try {
+        showLoading(true);
+        const response = await fetch(`${API_URL}/webhooks/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) throw new Error(result.detail || 'Registration failed');
+
+        showNotification(`Webhook "${data.name}" registered successfully!`, 'success');
+        document.getElementById('webhookForm').reset();
+        loadWebhooks();
+
+    } catch (error) {
+        console.error('Webhook registration error:', error);
+        showNotification('Failed to register webhook: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+
+    return false;
+}
+
+async function loadWebhooks() {
+    try {
+        const response = await fetch(`${API_URL}/webhooks`);
+        const data = await response.json();
+
+        const container = document.getElementById('webhooksList');
+        if (!container) return;
+
+        const webhooks = data.registered_webhooks || [];
+
+        if (webhooks.length === 0) {
+            container.innerHTML = '<div class="empty-state"><i class="fas fa-inbox"></i><p>No webhooks registered</p></div>';
+            return;
+        }
+
+        container.innerHTML = webhooks.map(wh => `
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; border-bottom: 1px solid var(--border);">
+                <div>
+                    <strong>${wh.name}</strong>
+                    <div style="font-size: 0.8125rem; color: var(--gray);">${wh.url}</div>
+                    <div style="font-size: 0.75rem; margin-top: 0.25rem;">
+                        ${wh.events.map(e => `<span class="badge badge-info">${e}</span>`).join(' ')}
+                    </div>
+                </div>
+                <div>
+                    <button class="action-btn" onclick="testWebhook('${wh.name}')" title="Test"><i class="fas fa-paper-plane"></i></button>
+                    <button class="action-btn action-btn-danger" onclick="deleteWebhook('${wh.name}')" title="Delete"><i class="fas fa-trash"></i></button>
+                </div>
+            </div>
+        `).join('');
+
+    } catch (error) {
+        console.error('Failed to load webhooks:', error);
+    }
+}
+
+async function testWebhook(name) {
+    try {
+        const response = await fetch(`${API_URL}/webhooks/test`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ webhook_name: name, event_type: 'test' })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showNotification(`Test webhook sent to "${name}"`, 'success');
+        } else {
+            showNotification(`Test failed: ${result.message}`, 'warning');
+        }
+
+    } catch (error) {
+        showNotification('Test failed: ' + error.message, 'error');
+    }
+}
+
+async function deleteWebhook(name) {
+    if (!confirm(`Delete webhook "${name}"?`)) return;
+
+    try {
+        const response = await fetch(`${API_URL}/webhooks/${name}`, { method: 'DELETE' });
+
+        if (response.ok) {
+            showNotification(`Webhook "${name}" deleted`, 'success');
+            loadWebhooks();
+        }
+    } catch (error) {
+        showNotification('Failed to delete webhook', 'error');
+    }
+}
+
+// Sentiment Analysis
+async function analyzeSentiment(event) {
+    event.preventDefault();
+
+    const leadId = document.getElementById('sentimentLeadId').value;
+    const text = document.getElementById('sentimentText').value.trim();
+
+    const data = {};
+    if (leadId) data.lead_id = parseInt(leadId);
+    if (text) data.text = text;
+
+    if (!leadId && !text) {
+        showNotification('Please enter a lead ID or text to analyze', 'warning');
+        return false;
     }
 
     try {
         showLoading(true);
-        const response = await fetch(`${API_URL}/export/selected`, {
+        const response = await fetch(`${API_URL}/sentiment/analyze`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                lead_ids: leadIds,
-                format: format.toLowerCase()
-            })
+            body: JSON.stringify(data)
         });
 
-        if (!response.ok) throw new Error('Export failed');
-
         const result = await response.json();
-        showNotification(`Exported ${result.count} leads. Downloading...`, 'success');
 
-        // Trigger download
-        downloadExportFile(result.filename);
+        if (!response.ok) throw new Error(result.detail || 'Analysis failed');
 
-        showLoading(false);
+        // Display results
+        const resultsDiv = document.getElementById('sentimentResults');
+        const statsDiv = document.getElementById('sentimentStats');
+
+        statsDiv.innerHTML = `
+            <div class="stat-card ${result.overall_sentiment === 'positive' ? 'success' : result.overall_sentiment === 'negative' ? 'danger' : 'warning'}">
+                <h3>Overall Sentiment</h3>
+                <div class="value">${result.overall_sentiment}</div>
+            </div>
+            <div class="stat-card info">
+                <h3>Sentiment Score</h3>
+                <div class="value">${result.sentiment_score}/100</div>
+            </div>
+            <div class="stat-card success">
+                <h3>Positive</h3>
+                <div class="value">${result.positive_count || 0}</div>
+            </div>
+            <div class="stat-card danger">
+                <h3>Negative</h3>
+                <div class="value">${result.negative_count || 0}</div>
+            </div>
+        `;
+
+        resultsDiv.style.display = 'block';
+        showNotification('Sentiment analysis complete', 'success');
 
     } catch (error) {
+        console.error('Sentiment analysis error:', error);
+        showNotification('Analysis failed: ' + error.message, 'error');
+    } finally {
         showLoading(false);
-        console.error('Error exporting selected leads:', error);
-        showNotification('Export failed: ' + error.message, 'error');
+    }
+
+    return false;
+}
+
+// Competitor Comparison
+async function compareCompetitors(event) {
+    event.preventDefault();
+
+    const idsText = document.getElementById('compareLeadIds').value;
+    const leadIds = idsText.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+
+    if (leadIds.length < 2) {
+        showNotification('Please enter at least 2 lead IDs', 'warning');
+        return false;
+    }
+
+    try {
+        showLoading(true);
+        const response = await fetch(`${API_URL}/compare`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lead_ids: leadIds })
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) throw new Error(result.detail || 'Comparison failed');
+
+        // Display results
+        const resultsDiv = document.getElementById('comparisonResults');
+        let html = '<h4 style="margin-bottom: 1rem;">Comparison Results</h4>';
+
+        if (result.winner_summary) {
+            html += '<div class="stats-grid">';
+            for (const [category, winner] of Object.entries(result.winner_summary)) {
+                html += `
+                    <div class="stat-card">
+                        <h3>${category.replace(/_/g, ' ').toUpperCase()}</h3>
+                        <div class="value" style="font-size: 1rem;">${winner}</div>
+                    </div>
+                `;
+            }
+            html += '</div>';
+        }
+
+        if (result.insights && result.insights.length > 0) {
+            html += '<h4 style="margin: 1.5rem 0 1rem;">Insights</h4><ul>';
+            result.insights.forEach(insight => {
+                html += `<li style="margin-bottom: 0.5rem;">${insight}</li>`;
+            });
+            html += '</ul>';
+        }
+
+        resultsDiv.innerHTML = html;
+        resultsDiv.style.display = 'block';
+        showNotification(`Compared ${result.businesses_compared} businesses`, 'success');
+
+    } catch (error) {
+        console.error('Comparison error:', error);
+        showNotification('Comparison failed: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+
+    return false;
+}
+
+// Email Template Generator
+let lastGeneratedEmail = { subject: '', body: '' };
+
+async function generateEmailTemplate(event) {
+    event.preventDefault();
+
+    const data = {
+        lead_id: parseInt(document.getElementById('emailLeadId').value),
+        template_type: document.getElementById('emailTemplateType').value,
+        sender_name: document.getElementById('emailSenderName').value.trim(),
+        sender_company: document.getElementById('emailSenderCompany').value.trim(),
+        sender_title: document.getElementById('emailSenderTitle').value.trim() || null,
+        custom_value_proposition: document.getElementById('emailValueProp').value.trim() || null
+    };
+
+    try {
+        showLoading(true);
+        const response = await fetch(`${API_URL}/email-template`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) throw new Error(result.detail || 'Generation failed');
+
+        // Store for copy
+        lastGeneratedEmail = { subject: result.subject, body: result.body };
+
+        // Display result
+        const resultDiv = document.getElementById('emailTemplateResult');
+        const previewDiv = document.getElementById('emailPreview');
+
+        previewDiv.innerHTML = `
+            <div style="margin-bottom: 1rem;">
+                <strong>Subject:</strong><br>
+                <span style="color: var(--primary);">${result.subject}</span>
+            </div>
+            <div>
+                <strong>Body:</strong><br>
+                <pre style="white-space: pre-wrap; font-family: inherit; margin-top: 0.5rem;">${result.body}</pre>
+            </div>
+            <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border);">
+                <span class="badge badge-info">Personalization Score: ${(result.personalization_score * 100).toFixed(0)}%</span>
+            </div>
+        `;
+
+        resultDiv.style.display = 'block';
+        showNotification('Email template generated!', 'success');
+
+    } catch (error) {
+        console.error('Email generation error:', error);
+        showNotification('Generation failed: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+
+    return false;
+}
+
+function copyEmail() {
+    const text = `Subject: ${lastGeneratedEmail.subject}\n\n${lastGeneratedEmail.body}`;
+    navigator.clipboard.writeText(text).then(() => {
+        showNotification('Email copied to clipboard!', 'success');
+    }).catch(() => {
+        showNotification('Failed to copy', 'error');
+    });
+}
+
+// Integrations Status
+async function loadIntegrations() {
+    try {
+        const response = await fetch(`${API_URL}/integrations/status`);
+        const data = await response.json();
+
+        // Display integrations
+        const integrationsGrid = document.getElementById('integrationsGrid');
+        if (integrationsGrid && data.integrations) {
+            integrationsGrid.innerHTML = Object.entries(data.integrations).map(([name, status]) => {
+                const isConfigured = status.configured || status.enabled;
+                return `
+                    <div class="stat-card ${isConfigured ? 'success' : ''}">
+                        <h3>${name.replace(/_/g, ' ').toUpperCase()}</h3>
+                        <div class="value" style="font-size: 1rem;">${isConfigured ? 'Configured' : 'Not Configured'}</div>
+                        ${status.enabled !== undefined ? `<div class="sub-text">${status.enabled ? 'Enabled' : 'Disabled'}</div>` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Display features
+        const featuresGrid = document.getElementById('featuresGrid');
+        if (featuresGrid && data.new_features) {
+            featuresGrid.innerHTML = Object.entries(data.new_features).map(([name, feature]) => {
+                const isEnabled = feature.enabled || feature.configured;
+                return `
+                    <div class="stat-card ${isEnabled ? 'success' : 'warning'}">
+                        <h3>${name.replace(/_/g, ' ').toUpperCase()}</h3>
+                        <div class="value" style="font-size: 1rem;">${isEnabled ? 'Active' : 'Inactive'}</div>
+                        <div class="sub-text">${feature.description || ''}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+    } catch (error) {
+        console.error('Failed to load integrations:', error);
     }
 }
+
+// Update page navigation for new pages
+const originalShowPage = showPage;
+showPage = function(pageName, evt) {
+    // Add new page titles
+    const newTitles = {
+        'geo-search': 'Geo Search',
+        'webhooks': 'Webhooks',
+        'sentiment': 'Sentiment Analysis',
+        'compare': 'Competitor Comparison',
+        'emails': 'Email Templates',
+        'integrations': 'Integrations'
+    };
+
+    originalShowPage(pageName, evt);
+
+    if (newTitles[pageName]) {
+        document.getElementById('pageTitle').textContent = newTitles[pageName];
+    }
+
+    // Load page-specific data
+    if (pageName === 'webhooks') loadWebhooks();
+    if (pageName === 'integrations') loadIntegrations();
+};

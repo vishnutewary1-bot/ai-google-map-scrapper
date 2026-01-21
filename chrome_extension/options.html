@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MapLeads Pro - Settings</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+            padding: 40px;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        .card h2 {
+            font-size: 18px;
+            color: #333;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: 8px;
+            color: #333;
+        }
+
+        .form-group input[type="text"],
+        .form-group input[type="url"] {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .form-group .hint {
+            font-size: 12px;
+            color: #888;
+            margin-top: 5px;
+        }
+
+        .checkbox-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .checkbox-item:hover {
+            background: #e9ecef;
+        }
+
+        .checkbox-item input {
+            accent-color: #667eea;
+        }
+
+        .btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #f5f5f5;
+            color: #333;
+            margin-left: 10px;
+        }
+
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+
+        .actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+
+        .message {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .message.success {
+            background: #e8f5e9;
+            color: #2e7d32;
+            display: block;
+        }
+
+        .message.error {
+            background: #ffebee;
+            color: #c62828;
+            display: block;
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #4CAF50;
+        }
+
+        .status-dot.offline {
+            background: #f44336;
+        }
+
+        .status-dot.checking {
+            background: #ff9800;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>MapLeads Pro Settings</h1>
+            <p>Configure your extension preferences</p>
+        </div>
+
+        <div id="message" class="message"></div>
+
+        <div class="card">
+            <h2>Server Connection</h2>
+
+            <div class="connection-status">
+                <div class="status-dot checking" id="status-dot"></div>
+                <span id="status-text">Checking connection...</span>
+            </div>
+
+            <div class="form-group" style="margin-top: 20px;">
+                <label for="serverUrl">Server URL</label>
+                <input type="url" id="serverUrl" placeholder="http://localhost:9000">
+                <p class="hint">The URL of your MapLeads Pro server</p>
+            </div>
+
+            <button class="btn btn-secondary" id="test-connection">Test Connection</button>
+        </div>
+
+        <div class="card">
+            <h2>Default Extraction Options</h2>
+            <p style="color: #666; margin-bottom: 15px;">Select what data to extract by default</p>
+
+            <div class="checkbox-group">
+                <label class="checkbox-item">
+                    <input type="checkbox" id="opt-email" checked>
+                    <span>Emails</span>
+                </label>
+                <label class="checkbox-item">
+                    <input type="checkbox" id="opt-phone" checked>
+                    <span>Phone Numbers</span>
+                </label>
+                <label class="checkbox-item">
+                    <input type="checkbox" id="opt-social" checked>
+                    <span>Social Media</span>
+                </label>
+                <label class="checkbox-item">
+                    <input type="checkbox" id="opt-reviews">
+                    <span>Reviews</span>
+                </label>
+                <label class="checkbox-item">
+                    <input type="checkbox" id="opt-photos">
+                    <span>Photos</span>
+                </label>
+                <label class="checkbox-item">
+                    <input type="checkbox" id="opt-times">
+                    <span>Popular Times</span>
+                </label>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>API Authentication</h2>
+
+            <div class="form-group">
+                <label for="apiKey">API Key (Optional)</label>
+                <input type="text" id="apiKey" placeholder="Enter your API key">
+                <p class="hint">Required if authentication is enabled on the server</p>
+            </div>
+        </div>
+
+        <div class="actions">
+            <button class="btn btn-secondary" id="reset">Reset to Defaults</button>
+            <button class="btn btn-primary" id="save">Save Settings</button>
+        </div>
+    </div>
+
+    <script>
+        // DOM elements
+        const elements = {
+            serverUrl: document.getElementById('serverUrl'),
+            apiKey: document.getElementById('apiKey'),
+            statusDot: document.getElementById('status-dot'),
+            statusText: document.getElementById('status-text'),
+            testConnection: document.getElementById('test-connection'),
+            save: document.getElementById('save'),
+            reset: document.getElementById('reset'),
+            message: document.getElementById('message'),
+            optEmail: document.getElementById('opt-email'),
+            optPhone: document.getElementById('opt-phone'),
+            optSocial: document.getElementById('opt-social'),
+            optReviews: document.getElementById('opt-reviews'),
+            optPhotos: document.getElementById('opt-photos'),
+            optTimes: document.getElementById('opt-times')
+        };
+
+        // Load saved settings
+        function loadSettings() {
+            chrome.storage.sync.get(['serverUrl', 'apiKey', 'extractionOptions'], (result) => {
+                elements.serverUrl.value = result.serverUrl || 'http://localhost:9000';
+                elements.apiKey.value = result.apiKey || '';
+
+                if (result.extractionOptions) {
+                    elements.optEmail.checked = result.extractionOptions.email !== false;
+                    elements.optPhone.checked = result.extractionOptions.phone !== false;
+                    elements.optSocial.checked = result.extractionOptions.social !== false;
+                    elements.optReviews.checked = result.extractionOptions.reviews || false;
+                    elements.optPhotos.checked = result.extractionOptions.photos || false;
+                    elements.optTimes.checked = result.extractionOptions.times || false;
+                }
+
+                checkConnection();
+            });
+        }
+
+        // Save settings
+        function saveSettings() {
+            const settings = {
+                serverUrl: elements.serverUrl.value.trim() || 'http://localhost:9000',
+                apiKey: elements.apiKey.value.trim(),
+                extractionOptions: {
+                    email: elements.optEmail.checked,
+                    phone: elements.optPhone.checked,
+                    social: elements.optSocial.checked,
+                    reviews: elements.optReviews.checked,
+                    photos: elements.optPhotos.checked,
+                    times: elements.optTimes.checked
+                }
+            };
+
+            chrome.storage.sync.set(settings, () => {
+                showMessage('Settings saved successfully!', 'success');
+                checkConnection();
+            });
+        }
+
+        // Reset to defaults
+        function resetSettings() {
+            elements.serverUrl.value = 'http://localhost:9000';
+            elements.apiKey.value = '';
+            elements.optEmail.checked = true;
+            elements.optPhone.checked = true;
+            elements.optSocial.checked = true;
+            elements.optReviews.checked = false;
+            elements.optPhotos.checked = false;
+            elements.optTimes.checked = false;
+
+            saveSettings();
+        }
+
+        // Check server connection
+        async function checkConnection() {
+            elements.statusDot.className = 'status-dot checking';
+            elements.statusText.textContent = 'Checking connection...';
+
+            try {
+                const serverUrl = elements.serverUrl.value || 'http://localhost:9000';
+                const response = await fetch(`${serverUrl}/api/health`);
+                const data = await response.json();
+
+                if (data.status === 'healthy') {
+                    elements.statusDot.className = 'status-dot';
+                    elements.statusText.textContent = `Connected to MapLeads Pro v${data.version}`;
+                } else {
+                    throw new Error('Server unhealthy');
+                }
+            } catch (error) {
+                elements.statusDot.className = 'status-dot offline';
+                elements.statusText.textContent = 'Cannot connect to server';
+            }
+        }
+
+        // Show message
+        function showMessage(text, type) {
+            elements.message.textContent = text;
+            elements.message.className = `message ${type}`;
+
+            setTimeout(() => {
+                elements.message.className = 'message';
+            }, 3000);
+        }
+
+        // Event listeners
+        elements.save.addEventListener('click', saveSettings);
+        elements.reset.addEventListener('click', resetSettings);
+        elements.testConnection.addEventListener('click', checkConnection);
+
+        // Initialize
+        loadSettings();
+    </script>
+</body>
+</html>

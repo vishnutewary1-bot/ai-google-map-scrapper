@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: mapleads-pro
+    env: python
+    buildCommand: pip install -r requirements.txt && playwright install chromium
+    startCommand: uvicorn api.app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DB_TYPE
+        value: postgresql
+      - key: DB_HOST
+        fromDatabase:
+          name: mapleads-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: mapleads-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: mapleads-db
+          property: database
+      - key: DB_USER
+        fromDatabase:
+          name: mapleads-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: mapleads-db
+          property: password
+      - key: HEADLESS_MODE
+        value: "true"
+
+databases:
+  - name: mapleads-db
+    plan: free

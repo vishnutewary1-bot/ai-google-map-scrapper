@@ -86,3 +86,9 @@ openai>=1.12.0
 # Additional utilities
 httpx>=0.27.0
 tenacity>=8.2.3
+
+# Rate Limiting
+slowapi>=0.1.9
+
+# CSRF Protection
+fastapi-csrf-protect>=0.3.0
