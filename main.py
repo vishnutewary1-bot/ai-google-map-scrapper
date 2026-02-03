@@ -9,8 +9,10 @@ from utils import DataExporter
 from config.settings import settings
 
 
-async def scrape_command(args):
+def scrape_command(args):
     """Execute scraping command."""
+    from scraper import ScrapeConfig
+
     scraper = GoogleMapsScraper()
 
     try:
@@ -18,29 +20,33 @@ async def scrape_command(args):
         db_manager.initialize()
         db_manager.create_tables()
 
-        # Initialize scraper
-        await scraper.initialize()
-
-        # Run scraping
-        results = await scraper.search_and_scrape(
+        # Build config
+        config = ScrapeConfig(
             search_query=args.query,
             location=args.location,
-            max_results=args.limit
+            max_results=args.limit,
+            headless=True,
         )
 
-        logger.info(f"Scraping completed: {len(results)} businesses found")
+        # Update job status if job_id provided
+        job_id = getattr(args, 'job_id', None)
+
+        # Run scraping using sync API
+        result = scraper.scrape(config, job_id=job_id)
+
+        logger.info(f"Scraping completed: {result.total_saved} businesses saved")
 
         # Auto-export if requested
-        if args.export:
+        if args.export and result.leads:
             exporter = DataExporter()
-            export_path = exporter.export_to_csv(data=results)
+            export_path = exporter.export_to_csv(data=result.leads)
             logger.info(f"Results exported to: {export_path}")
 
     except Exception as e:
         logger.error(f"Scraping failed: {e}")
         raise
     finally:
-        await scraper.close()
+        scraper.close()
 
 
 async def export_command(args):
@@ -191,6 +197,7 @@ Examples:
     scrape_parser.add_argument('--location', '-l', help='Location to search (e.g., "Mumbai", "Delhi NCR")')
     scrape_parser.add_argument('--limit', type=int, default=100, help='Maximum results to scrape (default: 100)')
     scrape_parser.add_argument('--export', action='store_true', help='Auto-export results to CSV')
+    scrape_parser.add_argument('--job-id', type=int, help='Database job ID (for API integration)')
 
     # Export command
     export_parser = subparsers.add_parser('export', help='Export scraped data')
@@ -214,7 +221,7 @@ Examples:
         init_db_command(args)
 
     elif args.command == 'scrape':
-        asyncio.run(scrape_command(args))
+        scrape_command(args)
 
     elif args.command == 'export':
         asyncio.run(export_command(args))

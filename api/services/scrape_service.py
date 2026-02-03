@@ -1,15 +1,16 @@
 """Scraping service - business logic for scrape operations."""
 
 import sys
+import subprocess
+import json
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Callable
 from loguru import logger
 
 # Add parent directory for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from scraper import UnifiedGoogleMapsScraper, ScrapeConfig
 from api.schemas.requests import ScrapeRequest, BulkScrapeRequest
 from api.schemas.responses import JobResponse
 
@@ -29,18 +30,10 @@ class ScrapeService:
 
     def __init__(self):
         """Initialize the scrape service."""
-        self._active_scrapers: Dict[int, UnifiedGoogleMapsScraper] = {}
+        self._active_processes: Dict[int, subprocess.Popen] = {}
 
     def create_job(self, request: ScrapeRequest) -> JobResponse:
-        """
-        Create a new scrape job in the database.
-
-        Args:
-            request: Scrape request parameters
-
-        Returns:
-            JobResponse with job details
-        """
+        """Create a new scrape job in the database."""
         if not HAS_DATABASE:
             raise RuntimeError("Database not available")
 
@@ -69,76 +62,66 @@ class ScrapeService:
         self,
         job_id: int,
         request: ScrapeRequest,
-        on_progress: Optional[callable] = None
+        on_progress: Optional[Callable] = None
     ):
-        """
-        Run a scraping job.
+        """Run a scraping job using subprocess for Playwright isolation."""
+        project_root = Path(__file__).parent.parent.parent
 
-        Args:
-            job_id: Database job ID
-            request: Scrape request parameters
-            on_progress: Callback for progress updates
-        """
-        scraper = UnifiedGoogleMapsScraper()
-        self._active_scrapers[job_id] = scraper
+        # Build the CLI command
+        cmd = [
+            sys.executable,
+            str(project_root / "main.py"),
+            "scrape",
+            "--query", request.search_query,
+            "--limit", str(request.max_results),
+            "--job-id", str(job_id),
+        ]
+
+        if request.location:
+            cmd.extend(["--location", request.location])
+
+        logger.info(f"Starting scrape subprocess for job {job_id}: {' '.join(cmd)}")
 
         try:
-            # Convert ScrapeFilters to dict if present
-            filters_dict = None
-            if request.filters:
-                filters_dict = request.filters.model_dump(exclude_none=True)
-
-            config = ScrapeConfig(
-                search_query=request.search_query,
-                location=request.location,
-                max_results=request.max_results,
-                extract_emails=request.extract_emails,
-                extract_social=request.extract_social,
-                extract_contacts=request.extract_contacts,
-                extract_insights=request.extract_insights,
-                extract_reviews=request.extract_reviews,
-                extract_popular_times=request.extract_popular_times,
-                enrich_from_website=request.enrich_from_website,
-                export_excel=request.export_excel,
-                export_sheets=request.export_sheets,
-                sheets_spreadsheet_id=request.sheets_spreadsheet_id,
-                headless=request.headless,
-                on_progress=on_progress,
-                filters=filters_dict,
+            # Run in subprocess - this isolates Playwright from FastAPI's event loop
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                cwd=str(project_root),
             )
+            self._active_processes[job_id] = process
 
-            result = scraper.scrape(config, job_id=job_id)
+            # Wait for completion
+            stdout, stderr = process.communicate()
 
-            # Update job with results
-            if HAS_DATABASE:
-                self._update_job_results(job_id, result)
-
-            return result
+            if process.returncode != 0:
+                error_msg = stderr.decode('utf-8', errors='replace')
+                logger.error(f"Scrape subprocess failed for job {job_id}: {error_msg}")
+                if HAS_DATABASE:
+                    self._update_job_error(job_id, error_msg[:500])
+            else:
+                logger.info(f"Scrape subprocess completed for job {job_id}")
+                output = stdout.decode('utf-8', errors='replace')
+                logger.debug(f"Subprocess output: {output}")
 
         except Exception as e:
             logger.error(f"Scrape job {job_id} failed: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             if HAS_DATABASE:
                 self._update_job_error(job_id, str(e))
-            raise
-
         finally:
-            scraper.close()
-            self._active_scrapers.pop(job_id, None)
+            self._active_processes.pop(job_id, None)
+            logger.info(f"Scrape job {job_id} completed")
 
     def run_bulk_scrape(
         self,
         job_id: int,
         request: BulkScrapeRequest,
-        on_progress: Optional[callable] = None
+        on_progress: Optional[Callable] = None
     ):
-        """
-        Run bulk scraping for multiple queries.
-
-        Args:
-            job_id: Main job ID for tracking
-            request: Bulk scrape request
-            on_progress: Progress callback
-        """
+        """Run bulk scraping for multiple queries."""
         import time
 
         all_results = []
@@ -147,15 +130,10 @@ class ScrapeService:
         for i, search_request in enumerate(request.searches):
             try:
                 logger.info(f"Bulk scrape {i + 1}/{total_searches}: {search_request.search_query}")
-
-                # Create sub-job
                 sub_job = self.create_job(search_request)
+                self.run_scrape(sub_job.job_id, search_request, on_progress)
+                all_results.append({"job_id": sub_job.job_id})
 
-                # Run scrape
-                result = self.run_scrape(sub_job.job_id, search_request, on_progress)
-                all_results.append(result)
-
-                # Delay between searches
                 if i < total_searches - 1:
                     logger.info(f"Waiting {request.delay_between}s before next search...")
                     time.sleep(request.delay_between)
@@ -234,7 +212,6 @@ class ScrapeService:
         if job.status not in ("failed", "completed"):
             raise ValueError(f"Job {job_id} cannot be retried (status: {job.status})")
 
-        # Reset job status
         if HAS_DATABASE:
             with db_manager.get_session() as session:
                 db_job = session.query(ScrapeJob).filter(ScrapeJob.id == job_id).first()
@@ -245,14 +222,12 @@ class ScrapeService:
                     db_job.completed_at = None
                     session.commit()
 
-        # Create request from job data
         request = ScrapeRequest(
             search_query=job.search_query,
             location=job.location,
             max_results=job.max_results or 100,
         )
 
-        # Add to background tasks
         background_tasks.add_task(self.run_scrape, job_id, request)
 
         return JobResponse(
@@ -272,19 +247,16 @@ class ScrapeService:
             if not job:
                 return False
 
-            # Note: BusinessLead doesn't have job_id, so we can't delete associated leads
-            # Delete job only
             session.delete(job)
             session.commit()
-
             return True
 
     def cancel_job(self, job_id: int) -> bool:
         """Cancel a running job."""
-        scraper = self._active_scrapers.get(job_id)
-        if scraper:
-            scraper.close()
-            self._active_scrapers.pop(job_id, None)
+        process = self._active_processes.get(job_id)
+        if process:
+            process.terminate()
+            self._active_processes.pop(job_id, None)
 
             if HAS_DATABASE:
                 with db_manager.get_session() as session:
@@ -295,20 +267,7 @@ class ScrapeService:
                         session.commit()
 
             return True
-
         return False
-
-    def _update_job_results(self, job_id: int, result):
-        """Update job with scrape results."""
-        with db_manager.get_session() as session:
-            job = session.query(ScrapeJob).filter(ScrapeJob.id == job_id).first()
-            if job:
-                job.status = "completed" if result.success else "failed"
-                job.leads_scraped = result.total_saved
-                job.completed_at = datetime.utcnow()
-                if hasattr(result, 'sheets_url') and result.sheets_url:
-                    job.google_sheet_url = result.sheets_url
-                session.commit()
 
     def _update_job_error(self, job_id: int, error: str):
         """Update job with error message."""
@@ -316,7 +275,7 @@ class ScrapeService:
             job = session.query(ScrapeJob).filter(ScrapeJob.id == job_id).first()
             if job:
                 job.status = "failed"
-                job.last_error = error[:500]  # Limit error message length
+                job.last_error = error[:500]
                 job.completed_at = datetime.utcnow()
                 session.commit()
 
