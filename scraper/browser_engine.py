@@ -685,13 +685,14 @@ class BrowserEngine:
             logger.error(f"Geo search failed: {e}")
             return False
 
-    def scroll_results(self, target_count: int, max_scrolls: int = 100) -> int:
+    def scroll_results(self, target_count: int, max_scrolls: int = 100, fast_mode: bool = False) -> int:
         """
         Scroll through results to load more listings.
 
         Args:
             target_count: Target number of results to load
             max_scrolls: Maximum scroll attempts
+            fast_mode: Use faster scroll delays (less human-like but quicker)
 
         Returns:
             Number of listings found
@@ -745,12 +746,19 @@ class BrowserEngine:
                     }
                 """, results_container)
 
-                # Random delay to appear human
-                time.sleep(random.uniform(1.5, 3.0))
+                # Random delay to appear human (faster in fast_mode)
+                if fast_mode:
+                    time.sleep(random.uniform(0.5, 1.0))
+                else:
+                    time.sleep(random.uniform(1.5, 3.0))
 
-                # Every 10 results, take a longer break
-                if current_count > 0 and current_count % 10 == 0:
-                    time.sleep(random.uniform(2.0, 4.0))
+                # Every N results, take a longer break
+                break_interval = 25 if fast_mode else 10
+                if current_count > 0 and current_count % break_interval == 0:
+                    if fast_mode:
+                        time.sleep(random.uniform(1.0, 2.0))
+                    else:
+                        time.sleep(random.uniform(2.0, 4.0))
 
                 scroll_count += 1
 

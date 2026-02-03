@@ -20,19 +20,28 @@ def scrape_command(args):
         db_manager.initialize()
         db_manager.create_tables()
 
+        # Check for fast mode and parallel options
+        fast_mode = getattr(args, 'fast', False)
+        parallel = getattr(args, 'parallel', 1)
+
         # Build config
         config = ScrapeConfig(
             search_query=args.query,
             location=args.location,
             max_results=args.limit,
             headless=True,
+            fast_mode=fast_mode,
         )
 
         # Update job status if job_id provided
         job_id = getattr(args, 'job_id', None)
 
-        # Run scraping using sync API
-        result = scraper.scrape(config, job_id=job_id)
+        # Run scraping - use parallel if requested
+        if parallel > 1:
+            logger.info(f"Using parallel mode with {parallel} browsers")
+            result = scraper.scrape_parallel(config, job_id=job_id, num_browsers=parallel)
+        else:
+            result = scraper.scrape(config, job_id=job_id)
 
         logger.info(f"Scraping completed: {result.total_saved} businesses saved")
 
@@ -198,6 +207,8 @@ Examples:
     scrape_parser.add_argument('--limit', type=int, default=100, help='Maximum results to scrape (default: 100)')
     scrape_parser.add_argument('--export', action='store_true', help='Auto-export results to CSV')
     scrape_parser.add_argument('--job-id', type=int, help='Database job ID (for API integration)')
+    scrape_parser.add_argument('--fast', action='store_true', help='Enable fast mode (reduced delays, 2-3x faster)')
+    scrape_parser.add_argument('--parallel', type=int, default=1, metavar='N', help='Use N parallel browsers (2-5 recommended, 5-10x faster)')
 
     # Export command
     export_parser = subparsers.add_parser('export', help='Export scraped data')

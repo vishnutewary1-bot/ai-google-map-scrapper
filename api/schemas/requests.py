@@ -43,6 +43,10 @@ class ScrapeRequest(BaseModel):
     # Browser options
     headless: bool = Field(True, description="Run browser in headless mode")
 
+    # Speed options
+    fast_mode: bool = Field(False, description="Enable fast mode (reduced delays, 2-3x faster)")
+    parallel_browsers: int = Field(1, ge=1, le=5, description="Number of parallel browsers (1-5, more = faster)")
+
     # Pre-scrape filters (applied during scraping)
     filters: Optional["ScrapeFilters"] = Field(
         None,

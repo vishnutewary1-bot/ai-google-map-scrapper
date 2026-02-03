@@ -80,6 +80,14 @@ class ScrapeService:
         if request.location:
             cmd.extend(["--location", request.location])
 
+        # Add speed options
+        if getattr(request, 'fast_mode', False):
+            cmd.append("--fast")
+
+        parallel = getattr(request, 'parallel_browsers', 1)
+        if parallel > 1:
+            cmd.extend(["--parallel", str(parallel)])
+
         logger.info(f"Starting scrape subprocess for job {job_id}: {' '.join(cmd)}")
 
         try:

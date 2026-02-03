@@ -153,6 +153,26 @@ class ScrapeConfig:
     # Pre-scrape filters (applied before saving)
     filters: Optional[Dict] = None
 
+    # Speed optimization
+    fast_mode: bool = False  # Enable for 3-5x faster scraping
+    parallel_browsers: int = 1  # Number of browser instances for parallel scraping
+
+    def __post_init__(self):
+        """Apply fast_mode settings if enabled."""
+        if self.fast_mode:
+            # Reduce delays for faster scraping
+            if self.min_delay == 2.0:  # Only override if using default
+                self.min_delay = 0.5
+            if self.max_delay == 5.0:
+                self.max_delay = 1.5
+            if self.long_break_interval == 10:
+                self.long_break_interval = 25
+            if self.long_break_duration == 10.0:
+                self.long_break_duration = 3.0
+            # Disable heavy enrichment by default in fast mode
+            if self.enrich_from_website and self.extract_reviews == False:
+                self.enrich_from_website = False  # Can be explicitly enabled
+
 
 @dataclass
 class ScrapeResult:
@@ -258,7 +278,7 @@ class UnifiedGoogleMapsScraper:
 
             # Scroll to load results
             self._report_progress(config, 0, config.max_results, "Loading results...")
-            listings_count = self.browser.scroll_results(config.max_results)
+            listings_count = self.browser.scroll_results(config.max_results, fast_mode=config.fast_mode)
             logger.info(f"Found {listings_count} listings")
 
             # Get all listings
@@ -840,6 +860,214 @@ class UnifiedGoogleMapsScraper:
         self._seen_place_ids.clear()
         self._seen_urls.clear()
         self._seen_name_phone.clear()
+
+    def scrape_parallel(
+        self,
+        config: ScrapeConfig,
+        job_id: Optional[int] = None,
+        num_browsers: int = 3
+    ) -> ScrapeResult:
+        """
+        Scrape using multiple browser instances in parallel for faster results.
+
+        Args:
+            config: Scraping configuration
+            job_id: Optional database job ID for tracking
+            num_browsers: Number of parallel browser instances (default: 3)
+
+        Returns:
+            ScrapeResult with combined leads from all browsers
+        """
+        from multiprocessing import Process, Queue, Manager
+        import queue
+
+        start_time = time.time()
+        result = ScrapeResult(success=False)
+
+        # Limit browsers to reasonable number
+        num_browsers = min(num_browsers, 5)
+
+        logger.info(f"Starting parallel scrape with {num_browsers} browsers")
+
+        try:
+            # Update job status
+            if job_id and HAS_DATABASE:
+                self._update_job_status(job_id, "running")
+
+            # First, get all listings with a single browser
+            self.browser = BrowserEngine(
+                headless=config.headless,
+                use_proxies=config.use_proxies,
+                proxy_list=config.proxy_list,
+                slow_mo=config.slow_mo,
+            )
+            self.browser.launch()
+
+            if not self.browser.navigate_to_maps():
+                raise RuntimeError("Failed to navigate to Google Maps")
+
+            if not self.browser.search(config.search_query, config.location):
+                raise RuntimeError("Search failed")
+
+            # Scroll to load all results (fast mode)
+            self._report_progress(config, 0, config.max_results, "Loading results...")
+            self.browser.scroll_results(config.max_results, fast_mode=True)
+
+            # Get all listing URLs
+            listings = self.browser.get_listings()
+            result.total_found = len(listings)
+            logger.info(f"Found {len(listings)} listings to process")
+
+            self.browser.close()
+            self.browser = None
+
+            if not listings:
+                result.success = True
+                return result
+
+            # Split listings among browsers
+            listings_per_browser = len(listings) // num_browsers
+            listing_chunks = []
+            for i in range(num_browsers):
+                start_idx = i * listings_per_browser
+                if i == num_browsers - 1:
+                    # Last browser gets remaining listings
+                    listing_chunks.append(listings[start_idx:config.max_results])
+                else:
+                    listing_chunks.append(listings[start_idx:start_idx + listings_per_browser])
+
+            # Use Manager for shared state
+            manager = Manager()
+            results_queue = manager.Queue()
+            errors_list = manager.list()
+
+            def worker_scrape(chunk_listings, worker_id, results_q, errors_l, cfg_dict):
+                """Worker function for parallel scraping."""
+                try:
+                    worker_scraper = UnifiedGoogleMapsScraper()
+                    worker_config = ScrapeConfig(**cfg_dict)
+                    worker_config.max_results = len(chunk_listings)
+
+                    worker_scraper.browser = BrowserEngine(
+                        headless=worker_config.headless,
+                        slow_mo=worker_config.slow_mo,
+                    )
+                    worker_scraper.browser.launch()
+
+                    leads = []
+                    for listing in chunk_listings:
+                        try:
+                            if not worker_scraper.browser.click_listing(listing):
+                                continue
+
+                            page = worker_scraper.browser.get_page()
+                            if not page:
+                                continue
+
+                            lead_data = worker_scraper.maps_extractor.extract(
+                                page, worker_config.search_query
+                            )
+
+                            if lead_data.get("business_name"):
+                                lead_data["quality_score"] = worker_scraper._calculate_quality_score(lead_data)
+                                lead_data["scraped_at"] = datetime.utcnow()
+                                leads.append(lead_data)
+
+                            worker_scraper.browser.go_back_to_results()
+                            time.sleep(random.uniform(worker_config.min_delay, worker_config.max_delay))
+
+                        except Exception as e:
+                            errors_l.append(f"Worker {worker_id}: {str(e)}")
+                            continue
+
+                    worker_scraper.close()
+
+                    for lead in leads:
+                        results_q.put(lead)
+
+                except Exception as e:
+                    errors_l.append(f"Worker {worker_id} failed: {str(e)}")
+
+            # Prepare config as dict for multiprocessing
+            config_dict = {
+                'search_query': config.search_query,
+                'location': config.location,
+                'headless': config.headless,
+                'slow_mo': config.slow_mo,
+                'min_delay': config.min_delay,
+                'max_delay': config.max_delay,
+                'fast_mode': config.fast_mode,
+                'enrich_from_website': False,  # Disable for speed in parallel
+            }
+
+            # Start worker processes
+            processes = []
+            for i, chunk in enumerate(listing_chunks):
+                if chunk:  # Only start if chunk has listings
+                    p = Process(
+                        target=worker_scrape,
+                        args=(chunk, i, results_queue, errors_list, config_dict)
+                    )
+                    processes.append(p)
+                    p.start()
+                    logger.info(f"Started worker {i} with {len(chunk)} listings")
+
+            # Wait for all processes to complete
+            for p in processes:
+                p.join(timeout=300)  # 5 minute timeout per worker
+
+            # Collect results from queue
+            while True:
+                try:
+                    lead = results_queue.get_nowait()
+                    # Check for duplicates
+                    if config.deduplicate and self._is_duplicate(lead, config):
+                        result.duplicates_skipped += 1
+                        continue
+
+                    # Save to database
+                    if HAS_DATABASE and job_id:
+                        if self._save_lead(lead, job_id):
+                            result.total_saved += 1
+
+                    result.leads.append(lead)
+
+                except queue.Empty:
+                    break
+
+            # Collect errors
+            result.errors = list(errors_list)
+
+            result.success = True
+            result.duration_seconds = time.time() - start_time
+            result.stats = {
+                "total_found": result.total_found,
+                "total_saved": result.total_saved,
+                "duplicates_skipped": result.duplicates_skipped,
+                "errors_count": len(result.errors),
+                "duration_seconds": result.duration_seconds,
+                "browsers_used": num_browsers,
+                "avg_quality_score": sum(l.get("quality_score", 0) for l in result.leads) / len(result.leads) if result.leads else 0,
+            }
+
+            if job_id and HAS_DATABASE:
+                self._update_job_status(job_id, "completed", result.stats)
+
+            logger.info(f"Parallel scrape completed: {len(result.leads)} leads in {result.duration_seconds:.1f}s")
+
+        except Exception as e:
+            result.success = False
+            result.errors.append(str(e))
+            logger.error(f"Parallel scrape failed: {e}")
+
+            if job_id and HAS_DATABASE:
+                self._update_job_status(job_id, "failed", {"error": str(e)})
+
+        finally:
+            self.close()
+            result.duration_seconds = time.time() - start_time
+
+        return result
 
     def __enter__(self):
         """Context manager entry."""
