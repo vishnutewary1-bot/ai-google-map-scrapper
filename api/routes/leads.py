@@ -38,6 +38,9 @@ async def get_leads(
     max_reviews: Optional[int] = Query(None, ge=0),
     # Quality filter
     min_quality: Optional[int] = Query(None, ge=0, le=100),
+    # Star rating filter
+    min_star_rating: Optional[int] = Query(None, ge=1, le=5),
+    max_star_rating: Optional[int] = Query(None, ge=1, le=5),
     # Search filter
     search: Optional[str] = None,
     # Job filter
@@ -68,6 +71,8 @@ async def get_leads(
             min_reviews=min_reviews,
             max_reviews=max_reviews,
             min_quality=min_quality,
+            min_star_rating=min_star_rating,
+            max_star_rating=max_star_rating,
             search=search,
             job_id=job_id,
         )

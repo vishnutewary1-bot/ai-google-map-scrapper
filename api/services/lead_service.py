@@ -340,6 +340,12 @@ class LeadService:
         if filters.min_quality is not None:
             query = query.filter(BusinessLead.data_quality_score >= filters.min_quality)
 
+        # Star rating filters
+        if filters.min_star_rating is not None:
+            query = query.filter(BusinessLead.star_rating >= filters.min_star_rating)
+        if filters.max_star_rating is not None:
+            query = query.filter(BusinessLead.star_rating <= filters.max_star_rating)
+
         # Note: job_id filter removed - field doesn't exist in model
 
         if filters.search:
@@ -408,6 +414,8 @@ class LeadService:
             revenue_estimate=getattr(lead, 'revenue', None),
             description=getattr(lead, 'description', None),
             quality_score=lead.data_quality_score,
+            data_quality_score=lead.data_quality_score,
+            star_rating=getattr(lead, 'star_rating', None),
             search_query=lead.search_query,
             notes=None,  # notes not in model
             tags=None,  # tags not in model

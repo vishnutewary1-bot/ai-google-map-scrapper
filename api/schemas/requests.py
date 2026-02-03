@@ -43,6 +43,12 @@ class ScrapeRequest(BaseModel):
     # Browser options
     headless: bool = Field(True, description="Run browser in headless mode")
 
+    # Pre-scrape filters (applied during scraping)
+    filters: Optional["ScrapeFilters"] = Field(
+        None,
+        description="Filters to apply during scraping (before saving)"
+    )
+
     @field_validator('search_query')
     @classmethod
     def sanitize_query(cls, v: str) -> str:
@@ -63,10 +69,69 @@ class ScrapeRequest(BaseModel):
         return v.strip() or None
 
 
+class ScrapeFilters(BaseModel):
+    """
+    Pre-scrape filters applied DURING scraping to filter businesses before saving.
+
+    These filters are different from LeadFilters which filter already-saved leads.
+    ScrapeFilters determine which scraped businesses are saved to the database.
+    """
+
+    # Google rating filters (Google's rating, not our star rating)
+    min_google_rating: Optional[float] = Field(
+        None, ge=1.0, le=5.0,
+        description="Minimum Google rating (1-5)"
+    )
+    max_google_rating: Optional[float] = Field(
+        None, ge=1.0, le=5.0,
+        description="Maximum Google rating (1-5)"
+    )
+
+    # Review count filters
+    min_review_count: Optional[int] = Field(
+        None, ge=0,
+        description="Minimum number of Google reviews"
+    )
+    max_review_count: Optional[int] = Field(
+        None, ge=0,
+        description="Maximum number of Google reviews"
+    )
+
+    # Contact requirements - business MUST have these
+    require_phone: bool = Field(False, description="Only include businesses with phone")
+    require_website: bool = Field(False, description="Only include businesses with website")
+    require_email: bool = Field(False, description="Only include businesses with email (from website)")
+
+    # Opportunity filters - find businesses MISSING these (sales opportunities)
+    missing_website: bool = Field(False, description="Only include businesses WITHOUT website")
+    missing_social_media: bool = Field(False, description="Only include businesses WITHOUT social media")
+    missing_email: bool = Field(False, description="Only include businesses WITHOUT email")
+
+    # Social media requirements
+    require_facebook: bool = Field(False, description="Only include businesses with Facebook")
+    require_instagram: bool = Field(False, description="Only include businesses with Instagram")
+    require_linkedin: bool = Field(False, description="Only include businesses with LinkedIn")
+    require_any_social: bool = Field(False, description="Only include businesses with any social media")
+
+    # Business status filters
+    exclude_permanently_closed: bool = Field(True, description="Exclude permanently closed businesses")
+    exclude_temporarily_closed: bool = Field(False, description="Exclude temporarily closed businesses")
+
+    # Filter logic
+    logic_operator: str = Field(
+        "AND",
+        pattern="^(AND|OR)$",
+        description="How to combine multiple filters (AND = all must match, OR = any can match)"
+    )
+
+    # Preset name (for tracking)
+    preset_name: Optional[str] = Field(None, description="Name of filter preset used")
+
+
 class BulkScrapeRequest(BaseModel):
     """Request schema for bulk scraping multiple queries."""
 
-    searches: List[ScrapeRequest] = Field(
+    searches: List["ScrapeRequest"] = Field(
         ...,
         min_length=1,
         max_length=20,
@@ -112,6 +177,10 @@ class LeadFilters(BaseModel):
 
     # Quality score filter
     min_quality: Optional[int] = Field(None, ge=0, le=100, description="Minimum quality score")
+
+    # Star rating filter
+    min_star_rating: Optional[int] = Field(None, ge=1, le=5, description="Minimum star rating (1-5)")
+    max_star_rating: Optional[int] = Field(None, ge=1, le=5, description="Maximum star rating (1-5)")
 
     # Search filter
     search: Optional[str] = Field(None, max_length=200, description="Search in name/address")

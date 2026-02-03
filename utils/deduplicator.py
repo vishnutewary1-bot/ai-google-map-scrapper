@@ -1,9 +1,34 @@
-"""Advanced deduplication using fuzzy matching and proximity."""
+"""Advanced deduplication using fuzzy matching and proximity.
+
+This module provides advanced duplicate detection with:
+- Fuzzy name matching
+- Phone number normalization
+- Geographic proximity checks
+- Address similarity
+- Multi-criteria scoring
+"""
+
 from typing import List, Dict, Tuple, Optional
-from rapidfuzz import fuzz
+from difflib import SequenceMatcher
 from loguru import logger
 import re
-from database import db_manager, BusinessLead
+
+# Try to import rapidfuzz, fall back to difflib
+try:
+    from rapidfuzz import fuzz
+    HAS_RAPIDFUZZ = True
+except ImportError:
+    HAS_RAPIDFUZZ = False
+    fuzz = None
+
+# Database imports (optional)
+try:
+    from database import db_manager, BusinessLead
+    HAS_DATABASE = True
+except ImportError:
+    HAS_DATABASE = False
+    db_manager = None
+    BusinessLead = None
 
 
 class AdvancedDeduplicator:
@@ -295,3 +320,290 @@ class AdvancedDeduplicator:
         session.delete(duplicate)
 
         logger.info(f"Merged {duplicate.business_name} into {primary.business_name}")
+
+    # ==================== NEW METHODS (Feature 1.4) ====================
+
+    def normalize_name(self, name: str) -> str:
+        """Normalize business name for comparison."""
+        if not name:
+            return ''
+
+        # Lowercase
+        name = name.lower().strip()
+
+        # Remove punctuation
+        name = re.sub(r'[^\w\s]', '', name)
+
+        # Remove extra spaces
+        name = re.sub(r'\s+', ' ', name)
+
+        # Remove common suffixes
+        suffixes = [
+            'llc', 'inc', 'ltd', 'corp', 'co', 'pvt', 'private', 'limited',
+            'company', 'enterprises', 'services', 'group', 'solutions',
+            'international', 'intl', 'associates', 'partners'
+        ]
+        words = name.split()
+        words = [w for w in words if w not in suffixes]
+
+        return ' '.join(words)
+
+    def calculate_similarity(self, str1: str, str2: str) -> float:
+        """Calculate string similarity using best available method."""
+        if not str1 or not str2:
+            return 0.0
+
+        str1 = str1.lower().strip()
+        str2 = str2.lower().strip()
+
+        if HAS_RAPIDFUZZ:
+            return fuzz.token_set_ratio(str1, str2) / 100.0
+        else:
+            # Fall back to difflib SequenceMatcher
+            return SequenceMatcher(None, str1, str2).ratio()
+
+    def find_duplicates_in_list(
+        self,
+        leads: List[Dict],
+        similarity_threshold: float = 0.85
+    ) -> List[Dict]:
+        """
+        Find potential duplicate leads in a list of lead dictionaries.
+
+        Args:
+            leads: List of lead dictionaries
+            similarity_threshold: Minimum similarity to consider a match (0-1)
+
+        Returns:
+            List of duplicate groups with similarity scores.
+        """
+        duplicates = []
+        checked = set()
+
+        for i, lead1 in enumerate(leads):
+            if i in checked:
+                continue
+
+            group = {
+                'primary': lead1,
+                'primary_index': i,
+                'duplicates': [],
+                'match_reasons': []
+            }
+
+            for j, lead2 in enumerate(leads[i+1:], i+1):
+                if j in checked:
+                    continue
+
+                match_score, reasons = self._compare_lead_dicts(lead1, lead2)
+
+                if match_score >= similarity_threshold:
+                    checked.add(j)
+                    group['duplicates'].append({
+                        'lead': lead2,
+                        'index': j,
+                        'score': round(match_score, 3),
+                        'reasons': reasons
+                    })
+
+            if group['duplicates']:
+                checked.add(i)
+                duplicates.append(group)
+
+        return duplicates
+
+    def _compare_lead_dicts(self, lead1: Dict, lead2: Dict) -> Tuple[float, List[str]]:
+        """Compare two lead dictionaries and return match score with reasons."""
+        scores = []
+        reasons = []
+
+        # Exact place_id match (definitive)
+        if lead1.get('place_id') and lead1.get('place_id') == lead2.get('place_id'):
+            return 1.0, ['Same Google Place ID']
+
+        # Phone number match (strong indicator)
+        phone1 = self.normalize_phone(lead1.get('phone', ''))
+        phone2 = self.normalize_phone(lead2.get('phone', ''))
+        if phone1 and phone2 and phone1 == phone2:
+            scores.append(0.95)
+            reasons.append('Same phone number')
+
+        # Name similarity
+        name1 = self.normalize_name(lead1.get('business_name', ''))
+        name2 = self.normalize_name(lead2.get('business_name', ''))
+        name_sim = self.calculate_similarity(name1, name2)
+        if name_sim >= 0.8:
+            scores.append(name_sim * 0.8)
+            reasons.append(f'Similar name ({int(name_sim*100)}%)')
+
+        # Address similarity
+        addr1 = (lead1.get('full_address') or lead1.get('address') or '').lower()
+        addr2 = (lead2.get('full_address') or lead2.get('address') or '').lower()
+        if addr1 and addr2:
+            addr_sim = self.calculate_similarity(addr1, addr2)
+            if addr_sim >= 0.7:
+                scores.append(addr_sim * 0.6)
+                reasons.append(f'Similar address ({int(addr_sim*100)}%)')
+
+        # Website match
+        website1 = (lead1.get('website') or '').lower().rstrip('/')
+        website2 = (lead2.get('website') or '').lower().rstrip('/')
+        if website1 and website2 and website1 == website2:
+            scores.append(0.9)
+            reasons.append('Same website')
+
+        # Email match
+        email1 = (lead1.get('email') or '').lower()
+        email2 = (lead2.get('email') or '').lower()
+        if email1 and email2 and email1 == email2:
+            scores.append(0.85)
+            reasons.append('Same email')
+
+        # Geographic proximity
+        if all(lead1.get(k) and lead2.get(k) for k in ['latitude', 'longitude']):
+            distance = self.calculate_distance(
+                lead1['latitude'], lead1['longitude'],
+                lead2['latitude'], lead2['longitude']
+            )
+            if distance is not None and distance <= 50:  # Within 50 meters
+                scores.append(0.7)
+                reasons.append(f'Very close location ({int(distance)}m)')
+
+        # Calculate weighted average
+        if scores:
+            final_score = sum(scores) / len(scores)
+            return final_score, reasons
+
+        return 0.0, []
+
+    def merge_lead_dicts(self, primary: Dict, secondary: Dict) -> Dict:
+        """
+        Merge two lead dictionaries, preferring non-null values from primary.
+
+        Args:
+            primary: Primary lead dict (values preferred)
+            secondary: Secondary lead dict (fill missing values)
+
+        Returns:
+            Merged lead dictionary
+        """
+        merged = primary.copy()
+
+        for key, value in secondary.items():
+            if not merged.get(key) and value:
+                merged[key] = value
+
+        # Combine array fields
+        array_fields = [
+            'photos', 'reviews', 'subcategories', 'guessed_emails',
+            'review_highlights', 'review_keywords'
+        ]
+        for field in array_fields:
+            primary_val = primary.get(field) or []
+            secondary_val = secondary.get(field) or []
+            if primary_val and secondary_val:
+                if isinstance(primary_val, list) and isinstance(secondary_val, list):
+                    # Combine and deduplicate
+                    combined = primary_val.copy()
+                    for item in secondary_val:
+                        if item not in combined:
+                            combined.append(item)
+                    merged[field] = combined
+
+        # Take higher quality score
+        primary_quality = primary.get('data_quality_score') or primary.get('quality_score') or 0
+        secondary_quality = secondary.get('data_quality_score') or secondary.get('quality_score') or 0
+        merged['data_quality_score'] = max(primary_quality, secondary_quality)
+
+        return merged
+
+    def deduplicate_lead_list(
+        self,
+        leads: List[Dict],
+        strategy: str = 'merge',
+        similarity_threshold: float = 0.85
+    ) -> Tuple[List[Dict], Dict]:
+        """
+        Deduplicate a list of leads.
+
+        Args:
+            leads: List of lead dictionaries
+            strategy: 'merge' (combine data), 'keep_first', or 'keep_best'
+            similarity_threshold: Minimum similarity to consider a match (0-1)
+
+        Returns:
+            Tuple of (deduplicated_leads, stats)
+        """
+        stats = {
+            'total_input': len(leads),
+            'duplicates_found': 0,
+            'total_output': 0,
+            'merged': 0
+        }
+
+        if not leads:
+            return [], stats
+
+        duplicate_groups = self.find_duplicates_in_list(leads, similarity_threshold)
+
+        # Track which leads are duplicates
+        duplicate_indices = set()
+        for group in duplicate_groups:
+            stats['duplicates_found'] += len(group['duplicates'])
+            for dup in group['duplicates']:
+                duplicate_indices.add(dup['index'])
+
+        # Build output list
+        deduplicated = []
+        for i, lead in enumerate(leads):
+            if i in duplicate_indices:
+                continue
+
+            # Check if this lead is a primary in any group
+            for group in duplicate_groups:
+                if group['primary_index'] == i:
+                    if strategy == 'merge':
+                        # Merge all duplicates into primary
+                        merged = lead.copy()
+                        for dup in group['duplicates']:
+                            merged = self.merge_lead_dicts(merged, dup['lead'])
+                            stats['merged'] += 1
+                        lead = merged
+                    elif strategy == 'keep_best':
+                        # Keep the one with highest quality
+                        best = lead
+                        best_score = lead.get('data_quality_score') or lead.get('quality_score') or 0
+                        for dup in group['duplicates']:
+                            dup_score = dup['lead'].get('data_quality_score') or dup['lead'].get('quality_score') or 0
+                            if dup_score > best_score:
+                                best = dup['lead']
+                                best_score = dup_score
+                        lead = best
+                    # 'keep_first' - just use original lead
+                    break
+
+            deduplicated.append(lead)
+
+        stats['total_output'] = len(deduplicated)
+
+        logger.info(f"Deduplication: {stats['total_input']} -> {stats['total_output']} "
+                    f"({stats['duplicates_found']} duplicates found)")
+
+        return deduplicated, stats
+
+
+# Convenience functions
+def find_duplicates(leads: List[Dict], threshold: float = 0.85) -> List[Dict]:
+    """Find duplicate leads in a list."""
+    deduplicator = AdvancedDeduplicator()
+    return deduplicator.find_duplicates_in_list(leads, threshold)
+
+
+def deduplicate_leads(
+    leads: List[Dict],
+    strategy: str = 'merge',
+    threshold: float = 0.85
+) -> Tuple[List[Dict], Dict]:
+    """Deduplicate a list of leads."""
+    deduplicator = AdvancedDeduplicator()
+    return deduplicator.deduplicate_lead_list(leads, strategy, threshold)

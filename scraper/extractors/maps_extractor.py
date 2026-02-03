@@ -38,6 +38,14 @@ class MapsExtractor:
             'button[aria-label*="Phone"]',
             '[data-tooltip="Copy phone number"]',
         ],
+        "email": [
+            'a[href^="mailto:"]',
+            'button[data-item-id*="email"]',
+            'button[aria-label*="Email"]',
+            'button[aria-label*="email"]',
+            '[data-tooltip="Copy email"]',
+            'a[data-item-id*="email"]',
+        ],
         "website": [
             'a[data-item-id="authority"]',
             'a[aria-label*="Website"]',
@@ -94,6 +102,7 @@ class MapsExtractor:
             "pincode": None,
             "country": None,
             "phone": None,
+            "email": None,  # Email from Google Maps (if available)
             "website": None,
             "category": None,
 
@@ -130,6 +139,7 @@ class MapsExtractor:
             # Extract each field
             result["business_name"] = self._extract_business_name(page)
             result["phone"] = self._extract_phone(page)
+            result["email"] = self._extract_email(page)  # Try to get email from Google Maps
             result["website"] = self._extract_website(page)
             result["category"] = self._extract_category(page)
             result["rating"] = self._extract_rating(page)
@@ -321,6 +331,103 @@ class MapsExtractor:
         cleaned = re.sub(r"[^\d+\s\-()]", "", phone)
 
         return cleaned.strip()
+
+    def _extract_email(self, page: Page) -> Optional[str]:
+        """
+        Extract email address from Google Maps page.
+
+        Google Maps sometimes shows email in the business info section.
+        Also scans the page content for mailto links and email patterns.
+        """
+        # Try specific selectors first
+        for selector in self.SELECTORS["email"]:
+            try:
+                element = page.query_selector(selector)
+                if element:
+                    # Try href first (mailto: link)
+                    href = element.get_attribute("href")
+                    if href and href.startswith("mailto:"):
+                        email = href.replace("mailto:", "").split("?")[0].strip()
+                        if self._is_valid_email(email):
+                            logger.info(f"Found email in Google Maps: {email}")
+                            return email.lower()
+
+                    # Try aria-label
+                    aria = element.get_attribute("aria-label")
+                    if aria:
+                        email_match = re.search(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', aria)
+                        if email_match and self._is_valid_email(email_match.group(0)):
+                            logger.info(f"Found email in Google Maps aria-label: {email_match.group(0)}")
+                            return email_match.group(0).lower()
+
+                    # Try text content
+                    text = element.inner_text().strip()
+                    if text:
+                        email_match = re.search(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', text)
+                        if email_match and self._is_valid_email(email_match.group(0)):
+                            logger.info(f"Found email in Google Maps text: {email_match.group(0)}")
+                            return email_match.group(0).lower()
+            except Exception:
+                continue
+
+        # Fallback: Search entire page for mailto links
+        try:
+            mailto_links = page.query_selector_all('a[href^="mailto:"]')
+            for link in mailto_links:
+                href = link.get_attribute("href")
+                if href:
+                    email = href.replace("mailto:", "").split("?")[0].strip()
+                    if self._is_valid_email(email):
+                        logger.info(f"Found email in mailto link: {email}")
+                        return email.lower()
+        except Exception:
+            pass
+
+        # Fallback: Search page content for email patterns
+        try:
+            # Get all visible text from the info section
+            info_sections = page.query_selector_all('div[role="region"], div[class*="section"], div[class*="info"]')
+            for section in info_sections[:5]:  # Limit to first 5 sections
+                text = section.inner_text()
+                if text:
+                    # Look for email patterns
+                    email_match = re.search(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', text)
+                    if email_match and self._is_valid_email(email_match.group(0)):
+                        logger.info(f"Found email in page content: {email_match.group(0)}")
+                        return email_match.group(0).lower()
+        except Exception:
+            pass
+
+        return None
+
+    def _is_valid_email(self, email: str) -> bool:
+        """Validate email address format and exclude invalid/placeholder emails."""
+        if not email or '@' not in email:
+            return False
+
+        # Basic format check
+        if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
+            return False
+
+        # Exclude common invalid/placeholder emails
+        invalid_patterns = [
+            r'example\.com',
+            r'test\.com',
+            r'domain\.com',
+            r'email\.com',
+            r'your.*@',
+            r'name@',
+            r'sentry\.io',
+            r'placeholder',
+            r'noreply',
+            r'no-reply',
+        ]
+
+        for pattern in invalid_patterns:
+            if re.search(pattern, email, re.IGNORECASE):
+                return False
+
+        return True
 
     def _extract_website(self, page: Page) -> Optional[str]:
         """Extract website URL."""

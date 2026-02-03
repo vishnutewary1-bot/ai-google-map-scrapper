@@ -1,0 +1,42 @@
+# Optional dependencies for new features
+# Install with: pip install -r requirements-features.txt
+
+# Feature 2.1: Scheduled Jobs
+apscheduler>=3.10.0
+
+# Feature 5.1: PDF Export
+reportlab>=4.0.0
+
+# Feature 1.4: Advanced Deduplication (fuzzy matching)
+rapidfuzz>=3.0.0
+
+# Feature 6.1: Enhanced Lead Scoring (optional ML-based)
+scikit-learn>=1.3.0
+numpy>=1.24.0
+
+# AI Features (optional)
+openai>=1.0.0
+
+# Notifications (optional)
+slack-sdk>=3.21.0
+twilio>=8.0.0
+
+# CRM Integrations (optional)
+hubspot-api-client>=8.0.0
+simple-salesforce>=1.12.0
+
+# Google Sheets Export (optional)
+google-api-python-client>=2.100.0
+google-auth-httplib2>=0.1.0
+google-auth-oauthlib>=1.0.0
+
+# Airtable/Notion Export (optional)
+pyairtable>=2.0.0
+notion-client>=2.0.0
+
+# Email Verification (optional)
+dnspython>=2.4.0
+
+# Cloud Storage (optional)
+boto3>=1.28.0  # AWS S3
+google-cloud-storage>=2.10.0  # GCS

@@ -21,6 +21,7 @@ from api.routes import (
     analytics_router,
     websocket_router,
     features_router,
+    settings_router,
 )
 from api.schemas.responses import HealthResponse
 
@@ -59,6 +60,7 @@ def create_app() -> FastAPI:
     app.include_router(analytics_router, prefix="/api", tags=["Analytics"])
     app.include_router(websocket_router, tags=["WebSocket"])
     app.include_router(features_router, prefix="/api", tags=["Features"])
+    app.include_router(settings_router, prefix="/api", tags=["Settings"])
 
     # Health check endpoint
     @app.get("/api/health", response_model=HealthResponse, tags=["System"])

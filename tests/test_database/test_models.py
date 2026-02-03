@@ -7,7 +7,7 @@ from pathlib import Path
 # Add project root
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from database.models import BusinessLead, ScrapeJob, ExportHistory
+from database.models import BusinessLead, ScrapeJob
 
 
 class TestBusinessLead:
@@ -254,32 +254,3 @@ class TestScrapeJob:
         assert job.get_progress_percent() == 100
 
 
-class TestExportHistory:
-    """Test suite for ExportHistory model."""
-
-    def test_create_export_history(self, db_session):
-        """Test creating an export history record."""
-        export = ExportHistory(
-            filename="test_export.csv",
-            format="csv",
-            record_count=100
-        )
-        db_session.add(export)
-        db_session.commit()
-
-        assert export.id is not None
-        assert export.status == "completed"
-
-    def test_export_with_filters(self, db_session):
-        """Test export history with filters stored."""
-        export = ExportHistory(
-            filename="filtered_export.xlsx",
-            format="excel",
-            record_count=50,
-            filters={"city": "Mumbai", "has_email": True}
-        )
-        db_session.add(export)
-        db_session.commit()
-
-        assert export.filters is not None
-        assert export.filters["city"] == "Mumbai"

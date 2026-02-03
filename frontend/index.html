@@ -486,6 +486,41 @@
         .badge-info { background: #dbeafe; color: #1e40af; }
         .badge-secondary { background: #e2e8f0; color: #475569; }
 
+        /* Integration Sections */
+        .integration-section {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 1.25rem;
+            margin-bottom: 1rem;
+            border: 1px solid var(--border);
+        }
+
+        .integration-section:last-child {
+            margin-bottom: 0;
+        }
+
+        .integration-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .integration-header h4 {
+            font-size: 1rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin: 0;
+        }
+
+        .integration-header h4 i {
+            font-size: 1.25rem;
+        }
+
         /* Progress */
         .progress {
             height: 8px;
@@ -1081,6 +1116,14 @@
                     <i class="fas fa-layer-group"></i>
                     <span>Bulk Scrape</span>
                 </div>
+                <div class="nav-item" onclick="showPage('scheduled-jobs', event)">
+                    <i class="fas fa-clock"></i>
+                    <span>Scheduled Jobs</span>
+                </div>
+                <div class="nav-item" onclick="showPage('saved-searches', event)">
+                    <i class="fas fa-bookmark"></i>
+                    <span>Saved Searches</span>
+                </div>
                 <div class="nav-item" onclick="showPage('export', event)">
                     <i class="fas fa-file-export"></i>
                     <span>Export</span>
@@ -1113,6 +1156,10 @@
                 </div>
 
                 <div class="nav-section">System</div>
+                <div class="nav-item" onclick="showPage('admin', event)">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span>Admin Dashboard</span>
+                </div>
                 <div class="nav-item" onclick="showPage('integrations', event)">
                     <i class="fas fa-plug"></i>
                     <span>Integrations</span>
@@ -1235,6 +1282,17 @@
                                     </div>
                                 </div>
 
+                                <div class="form-group">
+                                    <label for="dataSource">Data Source</label>
+                                    <select id="dataSource" class="form-control">
+                                        <option value="google" selected>Google Maps (Recommended)</option>
+                                        <option value="justdial">JustDial (India)</option>
+                                        <option value="yellowpages">Yellow Pages (USA)</option>
+                                        <option value="multi">Multi-Source (All Available)</option>
+                                    </select>
+                                    <small style="color: var(--text-secondary); display: block; margin-top: 0.25rem;">JustDial: Best for Indian businesses. Yellow Pages: Best for US businesses.</small>
+                                </div>
+
                                 <h4 style="margin: 1.5rem 0 1rem; font-size: 0.9375rem;">Extraction Options</h4>
                                 <div class="feature-cards">
                                     <div class="feature-card active" onclick="toggleFeature(this)">
@@ -1282,6 +1340,107 @@
                                             <input type="checkbox" id="deduplicateResults" checked>
                                             <span>Auto-deduplicate results</span>
                                         </label>
+                                    </div>
+                                </div>
+
+                                <!-- Lead Filters Section (Pre-Scrape) -->
+                                <div class="collapsible-section" style="margin-top: 1.5rem;">
+                                    <h4 style="margin: 0 0 0.5rem; font-size: 0.9375rem; cursor: pointer; display: flex; align-items: center; gap: 0.5rem;" onclick="toggleScrapeFilters()">
+                                        <i class="fas fa-filter" id="filterIcon"></i>
+                                        Lead Filters (Pre-Scrape)
+                                        <i class="fas fa-chevron-down" id="filterChevron" style="margin-left: auto; transition: transform 0.2s;"></i>
+                                    </h4>
+                                    <small style="color: var(--text-secondary); display: block; margin-bottom: 0.75rem;">Filter businesses during scraping - only save leads that match your criteria</small>
+
+                                    <div id="scrapeFiltersSection" style="display: none; padding: 1rem; background: var(--gray-50); border-radius: 8px; margin-top: 0.5rem;">
+                                        <!-- Filter Preset -->
+                                        <div class="form-group" style="margin-bottom: 1rem;">
+                                            <label for="filterPreset">Filter Preset</label>
+                                            <select id="filterPreset" class="form-control" onchange="applyFilterPreset()">
+                                                <option value="">-- Select a Preset --</option>
+                                                <option value="web_design_clients">Web Design Clients (4+ rating, no website)</option>
+                                                <option value="social_media_clients">Social Media Clients (has website, no social)</option>
+                                                <option value="premium_leads">Premium Leads (4.5+ rating, 50+ reviews)</option>
+                                                <option value="new_business_opportunities">New Business Opportunities (low reviews, no online presence)</option>
+                                                <option value="email_campaign_ready">Email Campaign Ready (has email + phone)</option>
+                                                <option value="cold_calling_ready">Cold Calling Ready (has phone, 5+ reviews)</option>
+                                                <option value="local_seo_clients">Local SEO Clients (has website, low reviews)</option>
+                                            </select>
+                                        </div>
+
+                                        <div class="form-row">
+                                            <!-- Minimum Google Rating -->
+                                            <div class="form-group">
+                                                <label for="scrapeMinRating">Min Google Rating</label>
+                                                <select id="scrapeMinRating" class="form-control">
+                                                    <option value="">Any Rating</option>
+                                                    <option value="4.5">4.5+ Stars</option>
+                                                    <option value="4.0">4.0+ Stars</option>
+                                                    <option value="3.5">3.5+ Stars</option>
+                                                    <option value="3.0">3.0+ Stars</option>
+                                                </select>
+                                            </div>
+
+                                            <!-- Minimum Reviews -->
+                                            <div class="form-group">
+                                                <label for="scrapeMinReviews">Min Reviews</label>
+                                                <select id="scrapeMinReviews" class="form-control">
+                                                    <option value="">Any</option>
+                                                    <option value="100">100+ Reviews</option>
+                                                    <option value="50">50+ Reviews</option>
+                                                    <option value="20">20+ Reviews</option>
+                                                    <option value="10">10+ Reviews</option>
+                                                    <option value="5">5+ Reviews</option>
+                                                </select>
+                                            </div>
+
+                                            <!-- Max Reviews -->
+                                            <div class="form-group">
+                                                <label for="scrapeMaxReviews">Max Reviews</label>
+                                                <select id="scrapeMaxReviews" class="form-control">
+                                                    <option value="">Any</option>
+                                                    <option value="10">Max 10 Reviews</option>
+                                                    <option value="20">Max 20 Reviews</option>
+                                                    <option value="50">Max 50 Reviews</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin-top: 0.5rem;">
+                                            <!-- Must Have Section -->
+                                            <div>
+                                                <label style="font-weight: 600; font-size: 0.8125rem; margin-bottom: 0.5rem; display: block;">Must Have:</label>
+                                                <label class="form-check"><input type="checkbox" id="scrapeRequirePhone"> Phone Number</label>
+                                                <label class="form-check"><input type="checkbox" id="scrapeRequireWebsite"> Website</label>
+                                                <label class="form-check"><input type="checkbox" id="scrapeRequireEmail"> Email Address</label>
+                                                <label class="form-check"><input type="checkbox" id="scrapeRequireAnySocial"> Any Social Media</label>
+                                            </div>
+
+                                            <!-- Find Opportunities Section -->
+                                            <div>
+                                                <label style="font-weight: 600; font-size: 0.8125rem; margin-bottom: 0.5rem; display: block;">Find Opportunities (Missing):</label>
+                                                <label class="form-check"><input type="checkbox" id="scrapeMissingWebsite"> No Website</label>
+                                                <label class="form-check"><input type="checkbox" id="scrapeMissingSocial"> No Social Media</label>
+                                                <label class="form-check"><input type="checkbox" id="scrapeMissingEmail"> No Email</label>
+                                            </div>
+                                        </div>
+
+                                        <div class="form-row" style="margin-top: 1rem;">
+                                            <!-- Filter Logic -->
+                                            <div class="form-group">
+                                                <label for="scrapeFilterLogic">Filter Logic</label>
+                                                <select id="scrapeFilterLogic" class="form-control">
+                                                    <option value="AND">AND (All criteria must match)</option>
+                                                    <option value="OR">OR (Any criteria can match)</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div style="margin-top: 1rem;">
+                                            <button type="button" class="btn btn-outline btn-sm" onclick="clearScrapeFilters()">
+                                                <i class="fas fa-times"></i> Clear Filters
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -1380,6 +1539,16 @@
                                     <option value="$$$$">$$$$</option>
                                 </select>
                             </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <select id="filterMinStars" class="form-control">
+                                    <option value="">Min Stars</option>
+                                    <option value="5">5 Stars (Excellent)</option>
+                                    <option value="4">4+ Stars (Good)</option>
+                                    <option value="3">3+ Stars (Average)</option>
+                                    <option value="2">2+ Stars (Below Avg)</option>
+                                    <option value="1">1+ Stars (All)</option>
+                                </select>
+                            </div>
                         </div>
                         <div style="display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem;">
                             <label class="form-check"><input type="checkbox" id="filterHasPhone"> Has Phone</label>
@@ -1424,6 +1593,9 @@
                                 <button class="btn btn-sm btn-success" onclick="exportSelected()">
                                     <i class="fas fa-file-export"></i> Export Selected
                                 </button>
+                                <button class="btn btn-sm btn-outline" onclick="exportToPDF()" style="border-color: #ef4444; color: #ef4444;">
+                                    <i class="fas fa-file-pdf"></i> Export PDF
+                                </button>
                                 <button class="btn btn-sm btn-danger" onclick="deleteSelected()">
                                     <i class="fas fa-trash"></i> Delete Selected
                                 </button>
@@ -1458,13 +1630,14 @@
                                             <th>City</th>
                                             <th>Phone/Email</th>
                                             <th>Rating</th>
+                                            <th>Stars</th>
                                             <th>Quality</th>
                                             <th>Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody id="leadsBody">
                                         <tr>
-                                            <td colspan="8" style="text-align: center; padding: 2rem;">Loading...</td>
+                                            <td colspan="9" style="text-align: center; padding: 2rem;">Loading...</td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -1573,6 +1746,24 @@
                                         <div class="form-group">
                                             <label for="exportMinQuality">Minimum Quality Score</label>
                                             <input type="number" id="exportMinQuality" class="form-control" value="0" min="0" max="100">
+                                        </div>
+                                    </div>
+
+                                    <!-- Cloud Storage Option -->
+                                    <h4 style="margin: 1.5rem 0 1rem;">Cloud Upload (Optional)</h4>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label class="form-check">
+                                                <input type="checkbox" id="exportUploadToCloud">
+                                                <span>Upload to cloud storage</span>
+                                            </label>
+                                        </div>
+                                        <div class="form-group" id="cloudProviderGroup" style="display: none;">
+                                            <label for="exportCloudProvider">Cloud Provider</label>
+                                            <select id="exportCloudProvider" class="form-control">
+                                                <option value="s3">Amazon S3</option>
+                                                <option value="gcs">Google Cloud Storage</option>
+                                            </select>
                                         </div>
                                     </div>
 
@@ -1918,26 +2109,747 @@
                     </div>
                 </div>
 
-                <!-- Integrations Status Page -->
+                <!-- Integrations Settings Page -->
                 <div class="page" id="page-integrations">
+                    <!-- Status Overview -->
                     <div class="card">
                         <div class="card-header">
-                            <h3><i class="fas fa-plug"></i> Integration Status</h3>
-                            <button class="btn btn-sm btn-outline" onclick="loadIntegrations()"><i class="fas fa-sync"></i> Refresh</button>
+                            <h3><i class="fas fa-plug"></i> Integration Status Overview</h3>
+                            <button class="btn btn-sm btn-outline" onclick="loadIntegrationSettings()"><i class="fas fa-sync"></i> Refresh</button>
                         </div>
                         <div class="card-body">
-                            <div id="integrationsList">
-                                <div class="stats-grid" id="integrationsGrid"></div>
+                            <div class="stats-grid" id="integrationsGrid"></div>
+                        </div>
+                    </div>
+
+                    <!-- CRM Integrations -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-users"></i> CRM Integrations</h3>
+                        </div>
+                        <div class="card-body">
+                            <!-- HubSpot -->
+                            <div class="integration-section">
+                                <div class="integration-header">
+                                    <h4><i class="fab fa-hubspot" style="color:#ff7a59;"></i> HubSpot</h4>
+                                    <span class="badge" id="badge-hubspot">Not Configured</span>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group" style="flex:2;">
+                                        <label for="hubspot_access_token">Access Token</label>
+                                        <input type="password" id="hubspot_access_token" class="form-control" placeholder="pat-na1-xxxx-xxxx-xxxx">
+                                    </div>
+                                    <div class="form-group" style="flex:0; align-self:flex-end;">
+                                        <button class="btn btn-sm btn-outline" onclick="testIntegration('hubspot')"><i class="fas fa-plug"></i> Test</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Salesforce -->
+                            <div class="integration-section">
+                                <div class="integration-header">
+                                    <h4><i class="fab fa-salesforce" style="color:#00a1e0;"></i> Salesforce</h4>
+                                    <span class="badge" id="badge-salesforce">Not Configured</span>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="salesforce_username">Username</label>
+                                        <input type="text" id="salesforce_username" class="form-control" placeholder="user@example.com">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="salesforce_password">Password</label>
+                                        <input type="password" id="salesforce_password" class="form-control" placeholder="Password">
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="salesforce_security_token">Security Token</label>
+                                        <input type="password" id="salesforce_security_token" class="form-control" placeholder="Security Token">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="salesforce_domain">Domain</label>
+                                        <select id="salesforce_domain" class="form-control">
+                                            <option value="login">Production (login)</option>
+                                            <option value="test">Sandbox (test)</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group" style="flex:0; align-self:flex-end;">
+                                        <button class="btn btn-sm btn-outline" onclick="testIntegration('salesforce')"><i class="fas fa-plug"></i> Test</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Airtable -->
+                            <div class="integration-section">
+                                <div class="integration-header">
+                                    <h4><i class="fas fa-table" style="color:#18bfff;"></i> Airtable</h4>
+                                    <span class="badge" id="badge-airtable">Not Configured</span>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="airtable_api_key">API Key / Token</label>
+                                        <input type="password" id="airtable_api_key" class="form-control" placeholder="patXXXXXXXXXXXXXX">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="airtable_base_id">Base ID</label>
+                                        <input type="text" id="airtable_base_id" class="form-control" placeholder="appXXXXXXXXXXXXXX">
+                                    </div>
+                                    <div class="form-group" style="flex:0; align-self:flex-end;">
+                                        <button class="btn btn-sm btn-outline" onclick="testIntegration('airtable')"><i class="fas fa-plug"></i> Test</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Notion -->
+                            <div class="integration-section">
+                                <div class="integration-header">
+                                    <h4><i class="fas fa-book" style="color:#000;"></i> Notion</h4>
+                                    <span class="badge" id="badge-notion">Not Configured</span>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="notion_api_key">Integration Token</label>
+                                        <input type="password" id="notion_api_key" class="form-control" placeholder="secret_XXXXXXXXXXXX">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="notion_database_id">Database ID</label>
+                                        <input type="text" id="notion_database_id" class="form-control" placeholder="Database ID (optional)">
+                                    </div>
+                                    <div class="form-group" style="flex:0; align-self:flex-end;">
+                                        <button class="btn btn-sm btn-outline" onclick="testIntegration('notion')"><i class="fas fa-plug"></i> Test</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cloud Storage -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-cloud"></i> Cloud Storage</h3>
+                        </div>
+                        <div class="card-body">
+                            <!-- AWS S3 -->
+                            <div class="integration-section">
+                                <div class="integration-header">
+                                    <h4><i class="fab fa-aws" style="color:#ff9900;"></i> Amazon S3</h4>
+                                    <span class="badge" id="badge-aws_s3">Not Configured</span>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="aws_access_key">Access Key ID</label>
+                                        <input type="password" id="aws_access_key" class="form-control" placeholder="AKIAXXXXXXXXXXXXXXXX">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="aws_secret_key">Secret Access Key</label>
+                                        <input type="password" id="aws_secret_key" class="form-control" placeholder="Secret Key">
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="aws_region">Region</label>
+                                        <select id="aws_region" class="form-control">
+                                            <option value="us-east-1">US East (N. Virginia)</option>
+                                            <option value="us-west-2">US West (Oregon)</option>
+                                            <option value="eu-west-1">EU (Ireland)</option>
+                                            <option value="ap-south-1">Asia Pacific (Mumbai)</option>
+                                            <option value="ap-southeast-1">Asia Pacific (Singapore)</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="s3_bucket">S3 Bucket Name</label>
+                                        <input type="text" id="s3_bucket" class="form-control" placeholder="my-bucket-name">
+                                    </div>
+                                    <div class="form-group" style="flex:0; align-self:flex-end;">
+                                        <button class="btn btn-sm btn-outline" onclick="testIntegration('aws_s3')"><i class="fas fa-plug"></i> Test</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Google Cloud Storage -->
+                            <div class="integration-section">
+                                <div class="integration-header">
+                                    <h4><i class="fab fa-google" style="color:#4285f4;"></i> Google Cloud Storage</h4>
+                                    <span class="badge" id="badge-gcs">Not Configured</span>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="gcs_credentials_path">Credentials File Path</label>
+                                        <input type="text" id="gcs_credentials_path" class="form-control" placeholder="config/gcs_credentials.json">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="gcs_bucket">GCS Bucket Name</label>
+                                        <input type="text" id="gcs_bucket" class="form-control" placeholder="my-gcs-bucket">
+                                    </div>
+                                    <div class="form-group" style="flex:0; align-self:flex-end;">
+                                        <button class="btn btn-sm btn-outline" onclick="testIntegration('gcs')"><i class="fas fa-plug"></i> Test</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Google Sheets -->
+                            <div class="integration-section">
+                                <div class="integration-header">
+                                    <h4><i class="fab fa-google-drive" style="color:#0f9d58;"></i> Google Sheets</h4>
+                                    <span class="badge" id="badge-google_sheets">Not Configured</span>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-check">
+                                            <input type="checkbox" id="google_sheets_enabled">
+                                            <span>Enable Google Sheets Export</span>
+                                        </label>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="google_credentials_path">Credentials File Path</label>
+                                        <input type="text" id="google_credentials_path" class="form-control" placeholder="config/google_credentials.json">
+                                    </div>
+                                    <div class="form-group" style="flex:0; align-self:flex-end;">
+                                        <button class="btn btn-sm btn-outline" onclick="testIntegration('google_sheets')"><i class="fas fa-plug"></i> Test</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Notifications -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-bell"></i> Notifications</h3>
+                        </div>
+                        <div class="card-body">
+                            <!-- Webhooks -->
+                            <div class="integration-section">
+                                <div class="integration-header">
+                                    <h4><i class="fas fa-webhook" style="color:#667eea;"></i> Webhooks (Zapier/Make/n8n)</h4>
+                                    <span class="badge" id="badge-webhooks">Not Configured</span>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-check">
+                                            <input type="checkbox" id="webhook_enabled">
+                                            <span>Enable Webhooks</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group" style="flex:2;">
+                                        <label for="webhook_url">Webhook URL</label>
+                                        <input type="url" id="webhook_url" class="form-control" placeholder="https://hooks.zapier.com/hooks/catch/...">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="webhook_secret">Secret (optional)</label>
+                                        <input type="password" id="webhook_secret" class="form-control" placeholder="HMAC Secret">
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group" style="flex:2;">
+                                        <label for="webhook_events">Events (comma-separated)</label>
+                                        <input type="text" id="webhook_events" class="form-control" placeholder="job.completed,job.failed,lead.created">
+                                    </div>
+                                    <div class="form-group" style="flex:0; align-self:flex-end;">
+                                        <button class="btn btn-sm btn-outline" onclick="testIntegration('webhook')"><i class="fas fa-plug"></i> Test</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Slack -->
+                            <div class="integration-section">
+                                <div class="integration-header">
+                                    <h4><i class="fab fa-slack" style="color:#4a154b;"></i> Slack</h4>
+                                    <span class="badge" id="badge-slack">Not Configured</span>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="slack_token">Bot Token</label>
+                                        <input type="password" id="slack_token" class="form-control" placeholder="xoxb-XXXX-XXXX-XXXX">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="slack_channel">Channel ID</label>
+                                        <input type="text" id="slack_channel" class="form-control" placeholder="C0XXXXXXX">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Discord -->
+                            <div class="integration-section">
+                                <div class="integration-header">
+                                    <h4><i class="fab fa-discord" style="color:#5865f2;"></i> Discord</h4>
+                                    <span class="badge" id="badge-discord">Not Configured</span>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group" style="flex:2;">
+                                        <label for="discord_webhook_url">Webhook URL</label>
+                                        <input type="url" id="discord_webhook_url" class="form-control" placeholder="https://discord.com/api/webhooks/...">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Email/SMTP -->
+                            <div class="integration-section">
+                                <div class="integration-header">
+                                    <h4><i class="fas fa-envelope" style="color:#ea4335;"></i> Email (SMTP)</h4>
+                                    <span class="badge" id="badge-email">Not Configured</span>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="smtp_host">SMTP Host</label>
+                                        <input type="text" id="smtp_host" class="form-control" placeholder="smtp.gmail.com">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="smtp_port">Port</label>
+                                        <input type="number" id="smtp_port" class="form-control" value="587">
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="smtp_user">Username</label>
+                                        <input type="text" id="smtp_user" class="form-control" placeholder="your@email.com">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="smtp_password">Password/App Password</label>
+                                        <input type="password" id="smtp_password" class="form-control" placeholder="App Password">
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="email_from">From Email</label>
+                                        <input type="email" id="email_from" class="form-control" placeholder="notifications@yourapp.com">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="email_to">To Email(s)</label>
+                                        <input type="text" id="email_to" class="form-control" placeholder="admin@example.com, team@example.com">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- AI & Verification -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-robot"></i> AI & Verification</h3>
+                        </div>
+                        <div class="card-body">
+                            <!-- OpenAI -->
+                            <div class="integration-section">
+                                <div class="integration-header">
+                                    <h4><i class="fas fa-brain" style="color:#10a37f;"></i> OpenAI (AI Lead Scoring)</h4>
+                                    <span class="badge" id="badge-openai">Not Configured</span>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-check">
+                                            <input type="checkbox" id="ai_lead_scoring_enabled">
+                                            <span>Enable AI Lead Scoring</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group" style="flex:2;">
+                                        <label for="openai_api_key">API Key</label>
+                                        <input type="password" id="openai_api_key" class="form-control" placeholder="sk-XXXXXXXXXXXXXXXXXXXXXXXX">
+                                    </div>
+                                    <div class="form-group" style="flex:0; align-self:flex-end;">
+                                        <button class="btn btn-sm btn-outline" onclick="testIntegration('openai')"><i class="fas fa-plug"></i> Test</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Email Verification -->
+                            <div class="integration-section">
+                                <div class="integration-header">
+                                    <h4><i class="fas fa-check-circle" style="color:#10b981;"></i> Email Verification</h4>
+                                    <span class="badge" id="badge-email_verification">Not Configured</span>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="email_verification_provider">Provider</label>
+                                        <select id="email_verification_provider" class="form-control">
+                                            <option value="abstract">Abstract API</option>
+                                            <option value="hunter">Hunter.io</option>
+                                            <option value="neverbounce">NeverBounce</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group" style="flex:2;">
+                                        <label for="email_verification_api_key">API Key</label>
+                                        <input type="password" id="email_verification_api_key" class="form-control" placeholder="API Key">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- CAPTCHA -->
+                            <div class="integration-section">
+                                <div class="integration-header">
+                                    <h4><i class="fas fa-shield-alt" style="color:#f59e0b;"></i> CAPTCHA Solving (2Captcha)</h4>
+                                    <span class="badge" id="badge-captcha">Not Configured</span>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-check">
+                                            <input type="checkbox" id="captcha_enabled">
+                                            <span>Enable CAPTCHA Solving</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group" style="flex:2;">
+                                        <label for="captcha_api_key">2Captcha API Key</label>
+                                        <input type="password" id="captcha_api_key" class="form-control" placeholder="Your 2Captcha API Key">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Sentiment Analysis -->
+                            <div class="integration-section">
+                                <div class="integration-header">
+                                    <h4><i class="fas fa-smile" style="color:#3b82f6;"></i> Sentiment Analysis</h4>
+                                    <span class="badge badge-success" id="badge-sentiment">Enabled</span>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-check">
+                                            <input type="checkbox" id="sentiment_analysis_enabled" checked>
+                                            <span>Enable Sentiment Analysis (uses TextBlob - free)</span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Data Freshness -->
+                            <div class="integration-section">
+                                <div class="integration-header">
+                                    <h4><i class="fas fa-clock" style="color:#8b5cf6;"></i> Data Freshness</h4>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="data_freshness_threshold_days">Stale Data Threshold (days)</label>
+                                        <input type="number" id="data_freshness_threshold_days" class="form-control" value="30" min="1" max="365">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Save Button -->
+                    <div class="card">
+                        <div class="card-body" style="text-align:center;">
+                            <button class="btn btn-primary btn-lg" onclick="saveIntegrationSettings()">
+                                <i class="fas fa-save"></i> Save All Settings
+                            </button>
+                            <p style="margin-top:1rem; color:var(--text-secondary); font-size:0.875rem;">
+                                Settings are saved to the .env file. Restart the server to apply changes.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Scheduled Jobs Page -->
+                <div class="page" id="page-scheduled-jobs">
+                    <div class="grid-2">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-clock"></i> Create Scheduled Task</h3>
+                            </div>
+                            <div class="card-body">
+                                <form id="scheduledJobForm" onsubmit="return createScheduledJob(event)">
+                                    <div class="form-group">
+                                        <label for="scheduleTaskId">Task ID *</label>
+                                        <input type="text" id="scheduleTaskId" class="form-control" placeholder="e.g., daily-restaurants-mumbai" required>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="scheduleQuery">Search Query *</label>
+                                            <input type="text" id="scheduleQuery" class="form-control" placeholder="e.g., restaurants" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="scheduleLocation">Location</label>
+                                            <input type="text" id="scheduleLocation" class="form-control" placeholder="e.g., Mumbai">
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="scheduleType">Schedule Type</label>
+                                            <select id="scheduleType" class="form-control" onchange="toggleScheduleOptions()">
+                                                <option value="daily" selected>Daily</option>
+                                                <option value="weekly">Weekly</option>
+                                                <option value="hourly">Interval (Hours)</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group" id="scheduleHourGroup">
+                                            <label for="scheduleHour">Hour (0-23)</label>
+                                            <input type="number" id="scheduleHour" class="form-control" value="9" min="0" max="23">
+                                        </div>
+                                        <div class="form-group" id="scheduleMinuteGroup">
+                                            <label for="scheduleMinute">Minute (0-59)</label>
+                                            <input type="number" id="scheduleMinute" class="form-control" value="0" min="0" max="59">
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group" id="scheduleDayGroup" style="display: none;">
+                                            <label for="scheduleDay">Day of Week</label>
+                                            <select id="scheduleDay" class="form-control">
+                                                <option value="mon">Monday</option>
+                                                <option value="tue">Tuesday</option>
+                                                <option value="wed">Wednesday</option>
+                                                <option value="thu">Thursday</option>
+                                                <option value="fri">Friday</option>
+                                                <option value="sat">Saturday</option>
+                                                <option value="sun">Sunday</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group" id="scheduleIntervalGroup" style="display: none;">
+                                            <label for="scheduleInterval">Interval (Hours)</label>
+                                            <input type="number" id="scheduleInterval" class="form-control" value="24" min="1" max="168">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="scheduleMaxResults">Max Results</label>
+                                            <input type="number" id="scheduleMaxResults" class="form-control" value="100" min="1" max="500">
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="scheduleWebhook">Webhook URL (optional)</label>
+                                        <input type="url" id="scheduleWebhook" class="form-control" placeholder="https://hooks.zapier.com/...">
+                                    </div>
+                                    <div style="display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem;">
+                                        <label class="form-check"><input type="checkbox" id="scheduleExtractEmails" checked> Extract Emails</label>
+                                        <label class="form-check"><input type="checkbox" id="scheduleExtractSocial" checked> Extract Social</label>
+                                        <label class="form-check"><input type="checkbox" id="scheduleNotify" checked> Notify on Complete</label>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-plus"></i> Create Scheduled Task
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-list"></i> Scheduled Tasks</h3>
+                                <button class="btn btn-sm btn-outline" onclick="loadScheduledJobs()"><i class="fas fa-sync"></i></button>
+                            </div>
+                            <div class="card-body">
+                                <div id="scheduledJobsList">
+                                    <div class="empty-state"><i class="fas fa-calendar-times"></i><p>No scheduled tasks</p></div>
+                                </div>
                             </div>
                         </div>
                     </div>
                     <div class="card">
                         <div class="card-header">
-                            <h3><i class="fas fa-star"></i> New Features (v2.0)</h3>
+                            <h3><i class="fas fa-history"></i> Scheduler Status</h3>
                         </div>
                         <div class="card-body">
-                            <div id="featuresList">
-                                <div class="stats-grid" id="featuresGrid"></div>
+                            <div id="schedulerStatus" class="stats-grid">
+                                <div class="stat-card">
+                                    <h3>Status</h3>
+                                    <div class="value" id="schedulerRunning">-</div>
+                                </div>
+                                <div class="stat-card info">
+                                    <h3>Total Tasks</h3>
+                                    <div class="value" id="schedulerTotalTasks">0</div>
+                                </div>
+                                <div class="stat-card success">
+                                    <h3>Active Tasks</h3>
+                                    <div class="value" id="schedulerActiveTasks">0</div>
+                                </div>
+                                <div class="stat-card warning">
+                                    <h3>Paused Tasks</h3>
+                                    <div class="value" id="schedulerPausedTasks">0</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Saved Searches Page -->
+                <div class="page" id="page-saved-searches">
+                    <div class="grid-2">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-bookmark"></i> Save Current Search</h3>
+                            </div>
+                            <div class="card-body">
+                                <form id="saveSearchForm" onsubmit="return saveSearch(event)">
+                                    <div class="form-group">
+                                        <label for="savedSearchName">Search Name *</label>
+                                        <input type="text" id="savedSearchName" class="form-control" placeholder="e.g., Mumbai Restaurants" required>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="savedSearchQuery">Search Query *</label>
+                                            <input type="text" id="savedSearchQuery" class="form-control" placeholder="e.g., restaurants" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="savedSearchLocation">Location</label>
+                                            <input type="text" id="savedSearchLocation" class="form-control" placeholder="e.g., Mumbai">
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="savedSearchMaxResults">Max Results</label>
+                                            <input type="number" id="savedSearchMaxResults" class="form-control" value="50" min="1" max="500">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="savedSearchDataSource">Data Source</label>
+                                            <select id="savedSearchDataSource" class="form-control">
+                                                <option value="google">Google Maps</option>
+                                                <option value="justdial">JustDial</option>
+                                                <option value="yellowpages">Yellow Pages</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div style="display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem;">
+                                        <label class="form-check"><input type="checkbox" id="savedSearchEmails" checked> Extract Emails</label>
+                                        <label class="form-check"><input type="checkbox" id="savedSearchSocial" checked> Extract Social</label>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-save"></i> Save Search
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-list"></i> My Saved Searches</h3>
+                                <button class="btn btn-sm btn-outline" onclick="loadSavedSearches()"><i class="fas fa-sync"></i></button>
+                            </div>
+                            <div class="card-body">
+                                <div id="savedSearchesList">
+                                    <div class="empty-state"><i class="fas fa-bookmark"></i><p>No saved searches yet</p></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Admin Dashboard Page -->
+                <div class="page" id="page-admin">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <h3>Total Leads</h3>
+                            <div class="value" id="admin-total-leads">0</div>
+                            <div class="sub-text">In database</div>
+                        </div>
+                        <div class="stat-card success">
+                            <h3>High Quality</h3>
+                            <div class="value" id="admin-high-quality">0</div>
+                            <div class="sub-text">Score 70+</div>
+                        </div>
+                        <div class="stat-card info">
+                            <h3>Total Jobs</h3>
+                            <div class="value" id="admin-total-jobs">0</div>
+                            <div class="sub-text">All time</div>
+                        </div>
+                        <div class="stat-card warning">
+                            <h3>Scheduled Tasks</h3>
+                            <div class="value" id="admin-scheduled-tasks">0</div>
+                            <div class="sub-text">Active</div>
+                        </div>
+                    </div>
+
+                    <div class="grid-2">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-server"></i> System Health</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="health-grid">
+                                    <div class="health-item">
+                                        <div class="label">API</div>
+                                        <div class="value good" id="admin-api-status">Online</div>
+                                    </div>
+                                    <div class="health-item">
+                                        <div class="label">Database</div>
+                                        <div class="value" id="admin-db-status">Connected</div>
+                                    </div>
+                                    <div class="health-item">
+                                        <div class="label">Scheduler</div>
+                                        <div class="value" id="admin-scheduler-status">-</div>
+                                    </div>
+                                    <div class="health-item">
+                                        <div class="label">WebSocket</div>
+                                        <div class="value" id="admin-ws-status">-</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-cogs"></i> Feature Status</h3>
+                            </div>
+                            <div class="card-body">
+                                <div id="adminFeatureStatus" class="health-grid"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid-2">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-chart-line"></i> Lead Scoring Stats</h3>
+                            </div>
+                            <div class="card-body">
+                                <div id="leadScoringStats">
+                                    <div class="stats-grid">
+                                        <div class="stat-card success">
+                                            <h3>High Priority</h3>
+                                            <div class="value" id="scoring-high">0</div>
+                                        </div>
+                                        <div class="stat-card warning">
+                                            <h3>Medium Priority</h3>
+                                            <div class="value" id="scoring-medium">0</div>
+                                        </div>
+                                        <div class="stat-card danger">
+                                            <h3>Low Priority</h3>
+                                            <div class="value" id="scoring-low">0</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-header">
+                                <h3><i class="fas fa-tools"></i> Quick Actions</h3>
+                            </div>
+                            <div class="card-body">
+                                <div style="display: flex; flex-wrap: wrap; gap: 0.75rem;">
+                                    <button class="btn btn-sm btn-primary" onclick="runBatchScoring()">
+                                        <i class="fas fa-calculator"></i> Score All Leads
+                                    </button>
+                                    <button class="btn btn-sm btn-outline" onclick="findDuplicates()">
+                                        <i class="fas fa-copy"></i> Find Duplicates
+                                    </button>
+                                    <button class="btn btn-sm btn-outline" onclick="runDeduplication()">
+                                        <i class="fas fa-broom"></i> Remove Duplicates
+                                    </button>
+                                    <button class="btn btn-sm btn-outline" onclick="exportAllPDF()">
+                                        <i class="fas fa-file-pdf"></i> Export All to PDF
+                                    </button>
+                                    <button class="btn btn-sm btn-success" onclick="refreshAdminData()">
+                                        <i class="fas fa-sync"></i> Refresh Data
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-exclamation-triangle"></i> Duplicate Detection</h3>
+                        </div>
+                        <div class="card-body">
+                            <div id="duplicatesResults" style="display: none;">
+                                <div class="stats-grid" style="margin-bottom: 1rem;">
+                                    <div class="stat-card warning">
+                                        <h3>Potential Duplicates</h3>
+                                        <div class="value" id="duplicates-count">0</div>
+                                    </div>
+                                </div>
+                                <div id="duplicatesList"></div>
+                            </div>
+                            <div id="noDuplicates" class="empty-state">
+                                <i class="fas fa-check-circle"></i>
+                                <p>Click "Find Duplicates" to scan for duplicate leads</p>
                             </div>
                         </div>
                     </div>

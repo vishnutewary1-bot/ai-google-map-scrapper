@@ -83,6 +83,11 @@ class ScrapeService:
         self._active_scrapers[job_id] = scraper
 
         try:
+            # Convert ScrapeFilters to dict if present
+            filters_dict = None
+            if request.filters:
+                filters_dict = request.filters.model_dump(exclude_none=True)
+
             config = ScrapeConfig(
                 search_query=request.search_query,
                 location=request.location,
@@ -99,6 +104,7 @@ class ScrapeService:
                 sheets_spreadsheet_id=request.sheets_spreadsheet_id,
                 headless=request.headless,
                 on_progress=on_progress,
+                filters=filters_dict,
             )
 
             result = scraper.scrape(config, job_id=job_id)

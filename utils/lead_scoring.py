@@ -1,6 +1,10 @@
-"""AI-powered lead scoring module for MapLeads Pro."""
+"""AI-powered lead scoring module for MapLeads Pro.
+
+Enhanced lead scoring with customizable weights and detailed breakdown.
+"""
 import re
 from typing import Dict, List, Optional, Any
+from dataclasses import dataclass, field
 from datetime import datetime
 from loguru import logger
 
@@ -17,7 +21,174 @@ try:
 except ImportError:
     OPENAI_AVAILABLE = False
 
-from database import db_manager, BusinessLead
+# Database imports (optional)
+try:
+    from database import db_manager, BusinessLead
+    HAS_DATABASE = True
+except ImportError:
+    HAS_DATABASE = False
+    db_manager = None
+    BusinessLead = None
+
+
+@dataclass
+class StarRatingInfo:
+    """Star rating information with label, color, and suggested action."""
+    stars: int
+    label: str
+    color: str
+    suggested_action: str
+    score_range: str
+
+
+# Star rating conversion utilities
+def score_to_stars(score: float) -> int:
+    """
+    Convert a 0-100 lead score to a 1-5 star rating.
+
+    Args:
+        score: Lead score from 0-100
+
+    Returns:
+        Star rating from 1-5
+
+    Ranges:
+        5 Stars: 85-100 (Excellent)
+        4 Stars: 70-84 (Good)
+        3 Stars: 50-69 (Average)
+        2 Stars: 30-49 (Below Average)
+        1 Star: 0-29 (Poor)
+    """
+    if score >= 85:
+        return 5
+    elif score >= 70:
+        return 4
+    elif score >= 50:
+        return 3
+    elif score >= 30:
+        return 2
+    else:
+        return 1
+
+
+def get_star_description(stars: int) -> StarRatingInfo:
+    """
+    Get detailed description for a star rating.
+
+    Args:
+        stars: Star rating from 1-5
+
+    Returns:
+        StarRatingInfo with label, color, suggested_action, and score_range
+    """
+    descriptions = {
+        5: StarRatingInfo(
+            stars=5,
+            label="Excellent",
+            color="#22c55e",  # Green
+            suggested_action="High priority - Contact immediately for best conversion",
+            score_range="85-100"
+        ),
+        4: StarRatingInfo(
+            stars=4,
+            label="Good",
+            color="#84cc16",  # Lime green
+            suggested_action="Strong lead - Include in primary outreach campaigns",
+            score_range="70-84"
+        ),
+        3: StarRatingInfo(
+            stars=3,
+            label="Average",
+            color="#eab308",  # Yellow
+            suggested_action="Moderate potential - Consider for secondary campaigns",
+            score_range="50-69"
+        ),
+        2: StarRatingInfo(
+            stars=2,
+            label="Below Average",
+            color="#f97316",  # Orange
+            suggested_action="Low priority - May need data enrichment before outreach",
+            score_range="30-49"
+        ),
+        1: StarRatingInfo(
+            stars=1,
+            label="Poor",
+            color="#ef4444",  # Red
+            suggested_action="Not recommended - Consider for re-scraping or removal",
+            score_range="0-29"
+        )
+    }
+
+    # Default to 1 star if invalid input
+    return descriptions.get(stars, descriptions[1])
+
+
+def get_star_display(stars: int, include_label: bool = True) -> Dict:
+    """
+    Get star rating display information for frontend rendering.
+
+    Args:
+        stars: Star rating from 1-5
+        include_label: Whether to include the text label
+
+    Returns:
+        Dictionary with stars, label, color, and icon info
+    """
+    info = get_star_description(stars)
+
+    return {
+        "stars": stars,
+        "filled_stars": stars,
+        "empty_stars": 5 - stars,
+        "label": info.label if include_label else None,
+        "color": info.color,
+        "suggested_action": info.suggested_action,
+        "score_range": info.score_range,
+        "display_text": f"{'★' * stars}{'☆' * (5 - stars)}"
+    }
+
+
+@dataclass
+class ScoringWeights:
+    """Customizable weights for lead scoring."""
+    # Contact completeness (0-1)
+    has_email: float = 15.0
+    has_phone: float = 15.0
+    has_website: float = 10.0
+    has_multiple_contacts: float = 5.0
+    has_business_email: float = 5.0
+
+    # Social presence (0-1)
+    has_social_media: float = 8.0
+    has_multiple_social: float = 5.0
+    has_linkedin: float = 3.0
+
+    # Business quality indicators
+    high_rating: float = 10.0  # 4.0+ rating
+    many_reviews: float = 8.0  # 50+ reviews
+    verified_business: float = 5.0
+
+    # Company maturity
+    established_business: float = 5.0  # 5+ years
+    has_employees_info: float = 3.0
+    has_revenue_info: float = 3.0
+
+    # Engagement indicators
+    responds_to_reviews: float = 5.0
+    has_photos: float = 3.0
+    has_description: float = 3.0
+    has_hours: float = 2.0
+
+    def get_max_score(self) -> float:
+        """Calculate maximum possible score."""
+        return sum([
+            self.has_email, self.has_phone, self.has_website,
+            self.has_multiple_contacts, self.has_business_email,
+            self.has_social_media, self.has_multiple_social, self.has_linkedin,
+            self.high_rating, self.many_reviews, self.verified_business,
+            self.established_business, self.has_employees_info, self.has_revenue_info,
+            self.responds_to_reviews, self.has_photos, self.has_description, self.has_hours
+        ])
 
 
 class LeadScorer:
@@ -58,11 +229,15 @@ class LeadScorer:
             lead: Lead dictionary
 
         Returns:
-            Dict with overall score and component scores
+            Dict with overall score, component scores, and star rating
         """
         scores = {
             "overall_score": 0,
             "grade": "F",
+            "stars": 1,
+            "star_label": "Poor",
+            "star_color": "#ef4444",
+            "star_info": None,
             "components": {},
             "strengths": [],
             "weaknesses": [],
@@ -99,6 +274,20 @@ class LeadScorer:
 
             scores["overall_score"] = round(overall, 1)
             scores["grade"] = self._calculate_grade(overall)
+
+            # Calculate star rating (1-5)
+            stars = score_to_stars(overall)
+            star_info = get_star_description(stars)
+            scores["stars"] = stars
+            scores["star_label"] = star_info.label
+            scores["star_color"] = star_info.color
+            scores["star_info"] = {
+                "stars": star_info.stars,
+                "label": star_info.label,
+                "color": star_info.color,
+                "suggested_action": star_info.suggested_action,
+                "score_range": star_info.score_range
+            }
 
             # Identify strengths and weaknesses
             self._analyze_strengths_weaknesses(scores, lead)
@@ -517,6 +706,232 @@ Be concise and actionable."""
         return results
 
 
+class EnhancedLeadScorer:
+    """
+    Enhanced lead scoring with customizable weights and detailed breakdown.
+    Feature 6.1 implementation.
+    """
+
+    def __init__(self, weights: Optional[ScoringWeights] = None):
+        """
+        Initialize enhanced lead scorer.
+
+        Args:
+            weights: Optional custom scoring weights
+        """
+        self.weights = weights or ScoringWeights()
+
+    def score_lead(self, lead: Dict) -> Dict:
+        """
+        Score a lead and return detailed breakdown.
+
+        Args:
+            lead: Lead dictionary
+
+        Returns:
+            Dict with 'score', 'grade', 'breakdown', 'recommendations'
+        """
+        breakdown = {}
+        total_score = 0.0
+        max_possible = self.weights.get_max_score()
+        recommendations = []
+
+        # ===== Contact Completeness =====
+
+        # Email
+        if lead.get('email'):
+            breakdown['email'] = self.weights.has_email
+            total_score += self.weights.has_email
+
+            # Bonus for business email
+            email = lead['email'].lower()
+            if not any(d in email for d in ['gmail', 'yahoo', 'hotmail', 'outlook', 'aol']):
+                breakdown['business_email'] = self.weights.has_business_email
+                total_score += self.weights.has_business_email
+        else:
+            breakdown['email'] = 0
+            recommendations.append("Add email address")
+
+        # Phone
+        if lead.get('phone'):
+            breakdown['phone'] = self.weights.has_phone
+            total_score += self.weights.has_phone
+        else:
+            breakdown['phone'] = 0
+            recommendations.append("Add phone number")
+
+        # Website
+        if lead.get('website'):
+            breakdown['website'] = self.weights.has_website
+            total_score += self.weights.has_website
+        else:
+            breakdown['website'] = 0
+            recommendations.append("Add website")
+
+        # Multiple contacts
+        contact_count = sum(1 for k in ['email_1', 'email_2', 'phone_1', 'phone_2'] if lead.get(k))
+        if contact_count >= 2:
+            breakdown['multiple_contacts'] = self.weights.has_multiple_contacts
+            total_score += self.weights.has_multiple_contacts
+
+        # ===== Social Media =====
+
+        social_platforms = ['social_facebook', 'social_instagram', 'social_linkedin', 'social_twitter', 'social_youtube']
+        social_count = sum(1 for p in social_platforms if lead.get(p))
+
+        if social_count > 0:
+            breakdown['social_media'] = self.weights.has_social_media
+            total_score += self.weights.has_social_media
+        else:
+            recommendations.append("Find social media profiles")
+
+        if social_count >= 3:
+            breakdown['multiple_social'] = self.weights.has_multiple_social
+            total_score += self.weights.has_multiple_social
+
+        if lead.get('social_linkedin'):
+            breakdown['linkedin'] = self.weights.has_linkedin
+            total_score += self.weights.has_linkedin
+
+        # ===== Rating Quality =====
+
+        rating = lead.get('rating', 0) or 0
+        if rating >= 4.0:
+            breakdown['high_rating'] = self.weights.high_rating
+            total_score += self.weights.high_rating
+        elif rating >= 3.5:
+            breakdown['high_rating'] = self.weights.high_rating * 0.5
+            total_score += self.weights.high_rating * 0.5
+
+        review_count = lead.get('review_count', 0) or 0
+        if review_count >= 100:
+            breakdown['reviews'] = self.weights.many_reviews
+            total_score += self.weights.many_reviews
+        elif review_count >= 50:
+            breakdown['reviews'] = self.weights.many_reviews * 0.7
+            total_score += self.weights.many_reviews * 0.7
+        elif review_count >= 20:
+            breakdown['reviews'] = self.weights.many_reviews * 0.4
+            total_score += self.weights.many_reviews * 0.4
+
+        # ===== Business Maturity =====
+
+        founded_year = lead.get('founded_year')
+        if founded_year:
+            years = datetime.now().year - founded_year
+            if years >= 5:
+                breakdown['established'] = self.weights.established_business
+                total_score += self.weights.established_business
+            elif years >= 2:
+                breakdown['established'] = self.weights.established_business * 0.5
+                total_score += self.weights.established_business * 0.5
+
+        if lead.get('employees') or lead.get('employees_min'):
+            breakdown['employees_info'] = self.weights.has_employees_info
+            total_score += self.weights.has_employees_info
+
+        if lead.get('revenue') or lead.get('revenue_min'):
+            breakdown['revenue_info'] = self.weights.has_revenue_info
+            total_score += self.weights.has_revenue_info
+
+        # ===== Engagement =====
+
+        if lead.get('photos') or lead.get('photo_count', 0) > 0:
+            breakdown['photos'] = self.weights.has_photos
+            total_score += self.weights.has_photos
+
+        if lead.get('description'):
+            breakdown['description'] = self.weights.has_description
+            total_score += self.weights.has_description
+
+        if any(lead.get(f'hours_{d}') for d in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']):
+            breakdown['hours'] = self.weights.has_hours
+            total_score += self.weights.has_hours
+
+        # ===== Calculate Final Score =====
+
+        final_score = int((total_score / max_possible) * 100) if max_possible > 0 else 0
+
+        # Determine grade
+        if final_score >= 90:
+            grade = 'A+'
+        elif final_score >= 80:
+            grade = 'A'
+        elif final_score >= 70:
+            grade = 'B'
+        elif final_score >= 60:
+            grade = 'C'
+        elif final_score >= 50:
+            grade = 'D'
+        else:
+            grade = 'F'
+
+        # Quality tier
+        if final_score >= 80:
+            quality_tier = 'premium'
+        elif final_score >= 50:
+            quality_tier = 'standard'
+        else:
+            quality_tier = 'basic'
+
+        # Calculate star rating
+        stars = score_to_stars(final_score)
+        star_info = get_star_description(stars)
+
+        return {
+            'score': final_score,
+            'grade': grade,
+            'stars': stars,
+            'star_label': star_info.label,
+            'star_color': star_info.color,
+            'star_info': {
+                'stars': star_info.stars,
+                'label': star_info.label,
+                'color': star_info.color,
+                'suggested_action': star_info.suggested_action,
+                'score_range': star_info.score_range
+            },
+            'breakdown': breakdown,
+            'max_possible': int(max_possible),
+            'earned': round(total_score, 1),
+            'recommendations': recommendations[:3],  # Top 3 recommendations
+            'quality_tier': quality_tier,
+            'components': {
+                'contact': breakdown.get('email', 0) + breakdown.get('phone', 0) + breakdown.get('website', 0),
+                'social': breakdown.get('social_media', 0) + breakdown.get('multiple_social', 0),
+                'reputation': breakdown.get('high_rating', 0) + breakdown.get('reviews', 0),
+                'maturity': breakdown.get('established', 0) + breakdown.get('employees_info', 0) + breakdown.get('revenue_info', 0)
+            }
+        }
+
+    def batch_score(self, leads: List[Dict]) -> List[Dict]:
+        """Score multiple leads and add score data to each."""
+        scored = []
+        for lead in leads:
+            score_data = self.score_lead(lead)
+            scored.append({
+                **lead,
+                'lead_score': score_data['score'],
+                'lead_grade': score_data['grade'],
+                'quality_tier': score_data['quality_tier'],
+                'score_breakdown': score_data['breakdown']
+            })
+        return sorted(scored, key=lambda x: x['lead_score'], reverse=True)
+
+
+# Convenience functions for enhanced scoring
+def score_lead_enhanced(lead: Dict, weights: Optional[ScoringWeights] = None) -> Dict:
+    """Quick function to score a lead with enhanced scoring."""
+    scorer = EnhancedLeadScorer(weights)
+    return scorer.score_lead(lead)
+
+
+def batch_score_leads(leads: List[Dict], weights: Optional[ScoringWeights] = None) -> List[Dict]:
+    """Batch score leads with enhanced scoring."""
+    scorer = EnhancedLeadScorer(weights)
+    return scorer.batch_score(leads)
+
+
 # Singleton instance
 _lead_scorer = None
 
@@ -526,3 +941,8 @@ def get_lead_scorer(openai_api_key: Optional[str] = None) -> LeadScorer:
     if _lead_scorer is None:
         _lead_scorer = LeadScorer(openai_api_key)
     return _lead_scorer
+
+
+def get_enhanced_scorer(weights: Optional[ScoringWeights] = None) -> EnhancedLeadScorer:
+    """Get an enhanced lead scorer instance."""
+    return EnhancedLeadScorer(weights)

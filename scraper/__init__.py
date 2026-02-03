@@ -69,16 +69,6 @@ except ImportError:
     CaptchaSolver = None
     get_captcha_solver = None
 
-# Scheduler (optional)
-try:
-    from .scheduler import ScrapeScheduler, ScheduledTask, get_scheduler
-    HAS_SCHEDULER = True
-except ImportError:
-    HAS_SCHEDULER = False
-    ScrapeScheduler = None
-    ScheduledTask = None
-    get_scheduler = None
-
 __version__ = "2.0.0"
 
 __all__ = [
@@ -111,9 +101,4 @@ __all__ = [
     # === CAPTCHA (if available) ===
     "CaptchaSolver",
     "get_captcha_solver",
-
-    # === Scheduler (if available) ===
-    "ScrapeScheduler",
-    "ScheduledTask",
-    "get_scheduler",
 ]

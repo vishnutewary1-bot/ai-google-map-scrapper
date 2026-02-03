@@ -46,6 +46,55 @@ try:
 except ImportError:
     HAS_SHEETS = False
 
+# Email guesser (Feature 1.1)
+try:
+    from utils.email_guesser import guess_business_emails
+    HAS_EMAIL_GUESSER = True
+except ImportError:
+    HAS_EMAIL_GUESSER = False
+    guess_business_emails = None
+
+# WhatsApp detector (Feature 1.2)
+try:
+    from utils.whatsapp_detector import detect_whatsapp
+    HAS_WHATSAPP_DETECTOR = True
+except ImportError:
+    HAS_WHATSAPP_DETECTOR = False
+    detect_whatsapp = None
+
+# Hours analyzer (Feature 1.3)
+try:
+    from utils.hours_analyzer import analyze_business_hours
+    HAS_HOURS_ANALYZER = True
+except ImportError:
+    HAS_HOURS_ANALYZER = False
+    analyze_business_hours = None
+
+# Review analyzer (Feature 1.5)
+try:
+    from utils.review_analyzer import analyze_reviews
+    HAS_REVIEW_ANALYZER = True
+except ImportError:
+    HAS_REVIEW_ANALYZER = False
+    analyze_reviews = None
+
+# Website analyzer (Feature 4.1)
+try:
+    from utils.website_analyzer import WebsiteAnalyzer, analyze_website
+    HAS_WEBSITE_ANALYZER = True
+except ImportError:
+    HAS_WEBSITE_ANALYZER = False
+    WebsiteAnalyzer = None
+    analyze_website = None
+
+# Pre-scrape filters
+try:
+    from utils.scrape_filters import ScrapeFilterProcessor
+    HAS_SCRAPE_FILTERS = True
+except ImportError:
+    HAS_SCRAPE_FILTERS = False
+    ScrapeFilterProcessor = None
+
 
 @dataclass
 class ScrapeConfig:
@@ -56,6 +105,9 @@ class ScrapeConfig:
 
     # Location
     location: Optional[str] = None
+
+    # Data source (google_maps, justdial, yellowpages)
+    data_source: str = "google_maps"
 
     # Limits
     max_results: int = 100
@@ -98,6 +150,9 @@ class ScrapeConfig:
     long_break_interval: int = 10  # Take longer break every N results
     long_break_duration: float = 10.0
 
+    # Pre-scrape filters (applied before saving)
+    filters: Optional[Dict] = None
+
 
 @dataclass
 class ScrapeResult:
@@ -108,11 +163,13 @@ class ScrapeResult:
     total_found: int = 0
     total_saved: int = 0
     duplicates_skipped: int = 0
+    filtered_out: int = 0  # Businesses filtered out by pre-scrape filters
     errors: List[str] = field(default_factory=list)
     excel_path: Optional[str] = None
     sheets_url: Optional[str] = None
     duration_seconds: float = 0.0
     stats: Dict = field(default_factory=dict)
+    filter_stats: Dict = field(default_factory=dict)  # Filter statistics
 
 
 class UnifiedGoogleMapsScraper:
@@ -228,6 +285,17 @@ class UnifiedGoogleMapsScraper:
                         logger.debug(f"Skipping duplicate: {lead_data.get('business_name')}")
                         continue
 
+                    # Apply pre-scrape filters (if configured)
+                    if config.filters and HAS_SCRAPE_FILTERS and ScrapeFilterProcessor:
+                        if not hasattr(self, '_filter_processor'):
+                            self._filter_processor = ScrapeFilterProcessor(config.filters)
+
+                        filter_result = self._filter_processor.should_include(lead_data)
+                        if not filter_result.passed:
+                            result.filtered_out += 1
+                            logger.debug(f"Filtered out: {lead_data.get('business_name')} - {filter_result.reason}")
+                            continue
+
                     # Calculate quality score
                     lead_data["quality_score"] = self._calculate_quality_score(lead_data)
                     lead_data["scraped_at"] = datetime.utcnow()  # Use datetime object, not string
@@ -274,10 +342,15 @@ class UnifiedGoogleMapsScraper:
                 "total_found": result.total_found,
                 "total_saved": result.total_saved,
                 "duplicates_skipped": result.duplicates_skipped,
+                "filtered_out": result.filtered_out,
                 "errors_count": len(result.errors),
                 "duration_seconds": result.duration_seconds,
                 "avg_quality_score": sum(l.get("quality_score", 0) for l in result.leads) / len(result.leads) if result.leads else 0,
             }
+
+            # Add filter stats if filters were used
+            if hasattr(self, '_filter_processor') and self._filter_processor:
+                result.filter_stats = self._filter_processor.get_stats()
 
             # Update job status
             if job_id and HAS_DATABASE:
@@ -347,9 +420,79 @@ class UnifiedGoogleMapsScraper:
             # Go back to results before website enrichment
             self.browser.go_back_to_results()
 
+            # Check if we got email from Google Maps
+            maps_email = lead_data.get("email")
+            if maps_email:
+                logger.info(f"✓ Email found in Google Maps: {maps_email}")
+
             # Enrich from website if enabled and website exists
+            # This will also try to get email if not found in Google Maps
             if config.enrich_from_website and lead_data.get("website"):
                 lead_data = self._enrich_from_website(lead_data, config)
+
+                # Log if we found email from website
+                if not maps_email and lead_data.get("email"):
+                    logger.info(f"✓ Email found from website: {lead_data.get('email')}")
+            elif not maps_email and config.extract_emails and lead_data.get("website"):
+                # Even if enrich_from_website is False, try to get email if extract_emails is True
+                logger.info(f"No email in Maps, trying website: {lead_data.get('website')}")
+                lead_data = self._enrich_from_website(lead_data, config)
+                if lead_data.get("email"):
+                    logger.info(f"✓ Email found from website: {lead_data.get('email')}")
+
+            # Feature 1.1: Email Pattern Guessing
+            # If still no email found but we have website, generate guesses
+            if HAS_EMAIL_GUESSER and not lead_data.get("email") and lead_data.get("website"):
+                guessed = guess_business_emails(
+                    website=lead_data.get("website"),
+                    business_name=lead_data.get("business_name"),
+                    owner_name=lead_data.get("owner_name"),
+                    contact_name=lead_data.get("contact_name_1"),
+                    max_guesses=5
+                )
+                if guessed:
+                    lead_data["guessed_emails"] = guessed
+                    logger.info(f"✓ Generated {len(guessed)} email guesses for {lead_data.get('business_name')}")
+
+            # Feature 1.2: WhatsApp Detection
+            if HAS_WHATSAPP_DETECTOR and lead_data.get("phone"):
+                wa_result = detect_whatsapp(lead_data["phone"])
+                if wa_result.get("likely_whatsapp"):
+                    lead_data["whatsapp_number"] = lead_data["phone"]
+                    lead_data["whatsapp_link"] = wa_result.get("whatsapp_link")
+                    lead_data["whatsapp_likelihood"] = wa_result.get("confidence")
+                    logger.debug(f"WhatsApp detected for {lead_data.get('business_name')}: {wa_result.get('confidence')}")
+
+            # Feature 1.3: Business Hours Analysis
+            if HAS_HOURS_ANALYZER:
+                hours_data = {
+                    "monday": lead_data.get("hours_monday"),
+                    "tuesday": lead_data.get("hours_tuesday"),
+                    "wednesday": lead_data.get("hours_wednesday"),
+                    "thursday": lead_data.get("hours_thursday"),
+                    "friday": lead_data.get("hours_friday"),
+                    "saturday": lead_data.get("hours_saturday"),
+                    "sunday": lead_data.get("hours_sunday"),
+                }
+                # Only analyze if we have at least some hours data
+                if any(hours_data.values()):
+                    analysis = analyze_business_hours(hours_data)
+                    lead_data["hours_analysis"] = analysis
+                    lead_data["best_call_times"] = analysis.get("best_call_times")
+                    lead_data["total_hours_per_week"] = analysis.get("total_hours_per_week")
+                    lead_data["opening_pattern"] = analysis.get("opening_pattern")
+
+            # Feature 1.5: Review Analysis
+            if HAS_REVIEW_ANALYZER and lead_data.get("reviews"):
+                try:
+                    review_analysis = analyze_reviews(lead_data["reviews"])
+                    lead_data["review_keywords"] = review_analysis.get("keywords")
+                    lead_data["review_trend"] = review_analysis.get("trends", {}).get("trend")
+                    lead_data["review_trend_momentum"] = review_analysis.get("trends", {}).get("momentum")
+                    lead_data["owner_response_rate"] = review_analysis.get("response_rate", {}).get("response_rate")
+                    lead_data["review_highlights"] = review_analysis.get("highlights")
+                except Exception as e:
+                    logger.debug(f"Review analysis failed: {e}")
 
             return lead_data
 
@@ -405,25 +548,45 @@ class UnifiedGoogleMapsScraper:
                         result = future.result(timeout=30)
 
                         if key == "contacts":
-                            # Merge contact info
-                            lead_data["email"] = result.get("email") or lead_data.get("email")
-                            lead_data["email_2"] = result.get("email_2")
-                            lead_data["email_3"] = result.get("email_3")
-                            lead_data["phone_2"] = result.get("phone_2")
-                            lead_data["phone_3"] = result.get("phone_3")
+                            # ContactExtractor returns ContactInfo object, convert to dict
+                            if hasattr(result, 'to_dict'):
+                                contact_dict = result.to_dict()
+                            else:
+                                contact_dict = result if isinstance(result, dict) else {}
+
+                            # Get existing email (from Google Maps) - only override if we don't have one
+                            existing_email = lead_data.get("email")
+                            website_email = contact_dict.get("email_1")
+
+                            if existing_email:
+                                # Keep email from Google Maps, add website emails as secondary
+                                lead_data["email"] = existing_email
+                                if website_email and website_email != existing_email:
+                                    lead_data["email_2"] = website_email
+                                    lead_data["email_3"] = contact_dict.get("email_2")
+                                else:
+                                    lead_data["email_2"] = contact_dict.get("email_2")
+                                    lead_data["email_3"] = contact_dict.get("email_3")
+                            else:
+                                # No email from Maps, use website emails
+                                lead_data["email"] = website_email
+                                lead_data["email_2"] = contact_dict.get("email_2")
+                                lead_data["email_3"] = contact_dict.get("email_3")
+
+                            # Additional phones from website
+                            lead_data["phone_2"] = contact_dict.get("phone_2")
+                            lead_data["phone_3"] = contact_dict.get("phone_3")
 
                             # Contact persons
-                            contacts = result.get("contact_persons", [])
-                            if contacts:
-                                lead_data["contact_person_1"] = contacts[0].get("name") if len(contacts) > 0 else None
-                                lead_data["contact_title_1"] = contacts[0].get("title") if len(contacts) > 0 else None
-                                lead_data["contact_email_1"] = contacts[0].get("email") if len(contacts) > 0 else None
-                                lead_data["contact_person_2"] = contacts[1].get("name") if len(contacts) > 1 else None
-                                lead_data["contact_title_2"] = contacts[1].get("title") if len(contacts) > 1 else None
-                                lead_data["contact_email_2"] = contacts[1].get("email") if len(contacts) > 1 else None
-                                lead_data["contact_person_3"] = contacts[2].get("name") if len(contacts) > 2 else None
-                                lead_data["contact_title_3"] = contacts[2].get("title") if len(contacts) > 2 else None
-                                lead_data["contact_email_3"] = contacts[2].get("email") if len(contacts) > 2 else None
+                            lead_data["contact_person_1"] = contact_dict.get("contact_name_1")
+                            lead_data["contact_title_1"] = contact_dict.get("contact_title_1")
+                            lead_data["contact_email_1"] = contact_dict.get("contact_email_1")
+                            lead_data["contact_person_2"] = contact_dict.get("contact_name_2")
+                            lead_data["contact_title_2"] = contact_dict.get("contact_title_2")
+                            lead_data["contact_email_2"] = contact_dict.get("contact_email_2")
+                            lead_data["contact_person_3"] = contact_dict.get("contact_name_3")
+                            lead_data["contact_title_3"] = contact_dict.get("contact_title_3")
+                            lead_data["contact_email_3"] = contact_dict.get("contact_email_3")
 
                         elif key == "social":
                             # Merge social media links
@@ -544,6 +707,10 @@ class UnifiedGoogleMapsScraper:
                 "contact_person_1": "contact_name_1",
                 "contact_person_2": "contact_name_2",
                 "contact_person_3": "contact_name_3",
+                # Feature 1.1: Email guessing - already matches
+                # Feature 1.2: WhatsApp - already matches
+                # Feature 1.3: Hours analysis - already matches
+                # Feature 1.5: Review analysis - already matches
             }
 
             # Create mapped data
@@ -576,8 +743,13 @@ class UnifiedGoogleMapsScraper:
                         if value is not None:
                             setattr(existing, key, value)
                     existing.updated_at = datetime.utcnow()
+                    # Data freshness tracking
+                    existing.last_verified_at = datetime.utcnow()
+                    existing.verification_count = (existing.verification_count or 0) + 1
                 else:
                     # Create new lead
+                    mapped_data['last_verified_at'] = datetime.utcnow()
+                    mapped_data['verification_count'] = 1
                     lead = BusinessLead(**mapped_data)
                     session.add(lead)
 
@@ -677,6 +849,125 @@ class UnifiedGoogleMapsScraper:
         """Context manager exit."""
         self.close()
         return False
+
+    def scrape_justdial(
+        self,
+        query: str,
+        city: str,
+        max_results: int = 50
+    ) -> List[Dict]:
+        """
+        Scrape business listings from JustDial (India).
+
+        Args:
+            query: Business type/category to search
+            city: City name in India
+            max_results: Maximum results to return
+
+        Returns:
+            List of business data dictionaries
+        """
+        if not HAS_JUSTDIAL:
+            raise ImportError("JustDial extractor not available")
+
+        try:
+            # Launch browser if not already running
+            if not self.browser:
+                self.browser = BrowserEngine(headless=True)
+                self.browser.launch()
+
+            page = self.browser.get_page()
+            return scrape_justdial(page, query, city, max_results)
+
+        except Exception as e:
+            logger.error(f"JustDial scrape failed: {e}")
+            return []
+
+    def scrape_yellowpages(
+        self,
+        query: str,
+        location: str,
+        max_results: int = 50,
+        max_pages: int = 3
+    ) -> List[Dict]:
+        """
+        Scrape business listings from Yellow Pages (USA).
+
+        Args:
+            query: Business type/category to search
+            location: Location (city, state, or zip)
+            max_results: Maximum results to return
+            max_pages: Maximum pages to scrape
+
+        Returns:
+            List of business data dictionaries
+        """
+        if not HAS_YELLOWPAGES:
+            raise ImportError("Yellow Pages extractor not available")
+
+        try:
+            # Launch browser if not already running
+            if not self.browser:
+                self.browser = BrowserEngine(headless=True)
+                self.browser.launch()
+
+            page = self.browser.get_page()
+            return scrape_yellowpages(page, query, location, max_results, max_pages)
+
+        except Exception as e:
+            logger.error(f"Yellow Pages scrape failed: {e}")
+            return []
+
+    def scrape_multi_source(
+        self,
+        config: ScrapeConfig,
+        job_id: Optional[int] = None
+    ) -> ScrapeResult:
+        """
+        Scrape from multiple data sources based on config.
+
+        Args:
+            config: Scraping configuration with data_source specified
+            job_id: Optional database job ID
+
+        Returns:
+            ScrapeResult with leads from specified source
+        """
+        if config.data_source == "justdial":
+            if not HAS_JUSTDIAL:
+                return ScrapeResult(success=False, errors=["JustDial extractor not available"])
+
+            leads = self.scrape_justdial(
+                query=config.search_query,
+                city=config.location or "Mumbai",
+                max_results=config.max_results
+            )
+            return ScrapeResult(
+                success=True,
+                leads=leads,
+                total_found=len(leads),
+                total_saved=len(leads)
+            )
+
+        elif config.data_source == "yellowpages":
+            if not HAS_YELLOWPAGES:
+                return ScrapeResult(success=False, errors=["Yellow Pages extractor not available"])
+
+            leads = self.scrape_yellowpages(
+                query=config.search_query,
+                location=config.location or "New York, NY",
+                max_results=config.max_results
+            )
+            return ScrapeResult(
+                success=True,
+                leads=leads,
+                total_found=len(leads),
+                total_saved=len(leads)
+            )
+
+        else:
+            # Default to Google Maps
+            return self.scrape(config, job_id)
 
 
 def run_scrape(

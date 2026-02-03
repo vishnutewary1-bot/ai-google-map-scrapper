@@ -64,6 +64,14 @@ class BusinessLead(Base):
     email_2 = Column(String(200), nullable=True)
     email_3 = Column(String(200), nullable=True)
 
+    # ==================== GUESSED EMAILS (NEW - Feature 1.1) ====================
+    guessed_emails = Column(JSON, nullable=True)  # AI-guessed email patterns
+
+    # ==================== WHATSAPP (NEW - Feature 1.2) ====================
+    whatsapp_number = Column(String(50), nullable=True)  # Formatted WhatsApp number
+    whatsapp_link = Column(String(200), nullable=True)   # wa.me link
+    whatsapp_likelihood = Column(Float, nullable=True)   # 0-1 confidence score
+
     # ==================== CONTACT PERSONS ====================
     contact_name_1 = Column(String(200), nullable=True)
     contact_title_1 = Column(String(200), nullable=True)
@@ -81,9 +89,7 @@ class BusinessLead(Base):
     social_twitter = Column(String(500), nullable=True)
     social_linkedin = Column(String(500), nullable=True)
     social_youtube = Column(String(500), nullable=True)
-    social_tiktok = Column(String(500), nullable=True)
-    social_pinterest = Column(String(500), nullable=True)
-    social_whatsapp = Column(String(500), nullable=True)
+    # Note: social_tiktok, social_pinterest, social_whatsapp removed (never extracted)
 
     # ==================== COMPANY INSIGHTS ====================
     employees = Column(String(100), nullable=True)  # "50-100" or "100+"
@@ -111,6 +117,12 @@ class BusinessLead(Base):
     reviews = Column(JSON, nullable=True)  # Full review data
     review_highlights = Column(JSON, nullable=True)  # Key phrases from reviews
 
+    # ==================== REVIEW ANALYSIS (NEW - Feature 1.5) ====================
+    review_keywords = Column(JSON, nullable=True)  # Top keywords from reviews
+    review_trend = Column(String(50), nullable=True)  # improving, stable, declining
+    review_trend_momentum = Column(Float, nullable=True)  # Change in rating over time
+    owner_response_rate = Column(Float, nullable=True)  # 0-100 percentage
+
     # ==================== BUSINESS HOURS ====================
     hours_monday = Column(String(100), nullable=True)
     hours_tuesday = Column(String(100), nullable=True)
@@ -120,6 +132,12 @@ class BusinessLead(Base):
     hours_saturday = Column(String(100), nullable=True)
     hours_sunday = Column(String(100), nullable=True)
     is_open_now = Column(Boolean, nullable=True)
+
+    # ==================== HOURS ANALYSIS (NEW - Feature 1.3) ====================
+    hours_analysis = Column(JSON, nullable=True)  # Full hours analysis
+    best_call_times = Column(JSON, nullable=True)  # Best times to contact
+    total_hours_per_week = Column(Float, nullable=True)  # Total weekly hours
+    opening_pattern = Column(String(50), nullable=True)  # regular, extended, limited, 24/7
 
     # ==================== POPULAR TIMES (NEW) ====================
     popular_times = Column(JSON, nullable=True)  # Full popular times data
@@ -135,10 +153,18 @@ class BusinessLead(Base):
     photo_count = Column(Integer, nullable=True)
     main_photo = Column(String(1000), nullable=True)
 
+    # ==================== WEBSITE ANALYSIS (NEW - Feature 4.1) ====================
+    website_ssl_valid = Column(Boolean, nullable=True)
+    website_ssl_expiry = Column(DateTime, nullable=True)
+    website_technologies = Column(JSON, nullable=True)  # List of detected techs
+    website_load_time = Column(Float, nullable=True)  # Seconds
+    website_mobile_responsive = Column(Boolean, nullable=True)
+    website_has_contact_form = Column(Boolean, nullable=True)
+
     # ==================== GOOGLE MAPS METADATA ====================
     place_id = Column(String(200), unique=True, nullable=True)  # Google's unique ID
     maps_url = Column(String(1000), nullable=True)
-    cid = Column(String(50), nullable=True)  # Google CID
+    # Note: cid column removed (never extracted or queried)
 
     # ==================== SCRAPING METADATA ====================
     scraped_at = Column(DateTime, default=func.now(), nullable=False)
@@ -150,7 +176,7 @@ class BusinessLead(Base):
     last_verified_at = Column(DateTime, nullable=True)
     verification_count = Column(Integer, default=0)
     data_changed = Column(Boolean, default=False)  # Changed since last scrape
-    change_history = Column(JSON, nullable=True)  # Track what changed
+    # Note: change_history column removed (never populated)
 
     # ==================== SENTIMENT ANALYSIS (NEW) ====================
     sentiment_score = Column(Integer, nullable=True)  # 0-100
@@ -160,6 +186,7 @@ class BusinessLead(Base):
     # ==================== LEAD SCORING ====================
     lead_score = Column(String(5), nullable=True)  # A+, A, B, C, D, F
     lead_score_numeric = Column(Integer, nullable=True)  # 0-100
+    star_rating = Column(Integer, default=0, index=True)  # 1-5 star rating
 
     # ==================== JOB RELATIONSHIP ====================
     job_id = Column(Integer, ForeignKey('scrape_jobs.id'), nullable=True, index=True)
@@ -186,6 +213,7 @@ class BusinessLead(Base):
         Index('idx_data_quality', 'data_quality_score'),
         Index('idx_sentiment_score', 'sentiment_score'),
         Index('idx_lead_score', 'lead_score'),
+        Index('idx_star_rating', 'star_rating'),
         Index('idx_last_verified', 'last_verified_at'),
     )
 
@@ -227,6 +255,14 @@ class BusinessLead(Base):
             'email_2': self.email_2,
             'email_3': self.email_3,
 
+            # Guessed emails (Feature 1.1)
+            'guessed_emails': self.guessed_emails,
+
+            # WhatsApp (Feature 1.2)
+            'whatsapp_number': self.whatsapp_number,
+            'whatsapp_link': self.whatsapp_link,
+            'whatsapp_likelihood': self.whatsapp_likelihood,
+
             # Contact persons
             'contact_name_1': self.contact_name_1,
             'contact_title_1': self.contact_title_1,
@@ -244,9 +280,6 @@ class BusinessLead(Base):
             'social_twitter': self.social_twitter,
             'social_linkedin': self.social_linkedin,
             'social_youtube': self.social_youtube,
-            'social_tiktok': self.social_tiktok,
-            'social_pinterest': self.social_pinterest,
-            'social_whatsapp': self.social_whatsapp,
 
             # Company insights
             'employees': self.employees,
@@ -272,6 +305,12 @@ class BusinessLead(Base):
             'reviews': self.reviews,
             'review_highlights': self.review_highlights,
 
+            # Review analysis (Feature 1.5)
+            'review_keywords': self.review_keywords,
+            'review_trend': self.review_trend,
+            'review_trend_momentum': self.review_trend_momentum,
+            'owner_response_rate': self.owner_response_rate,
+
             # Hours
             'hours_monday': self.hours_monday,
             'hours_tuesday': self.hours_tuesday,
@@ -281,6 +320,12 @@ class BusinessLead(Base):
             'hours_saturday': self.hours_saturday,
             'hours_sunday': self.hours_sunday,
             'is_open_now': self.is_open_now,
+
+            # Hours analysis (Feature 1.3)
+            'hours_analysis': self.hours_analysis,
+            'best_call_times': self.best_call_times,
+            'total_hours_per_week': self.total_hours_per_week,
+            'opening_pattern': self.opening_pattern,
 
             # Popular times
             'popular_times': self.popular_times,
@@ -296,10 +341,17 @@ class BusinessLead(Base):
             'photo_count': self.photo_count,
             'main_photo': self.main_photo,
 
+            # Website analysis (Feature 4.1)
+            'website_ssl_valid': self.website_ssl_valid,
+            'website_ssl_expiry': self.website_ssl_expiry.isoformat() if self.website_ssl_expiry else None,
+            'website_technologies': self.website_technologies,
+            'website_load_time': self.website_load_time,
+            'website_mobile_responsive': self.website_mobile_responsive,
+            'website_has_contact_form': self.website_has_contact_form,
+
             # Metadata
             'place_id': self.place_id,
             'maps_url': self.maps_url,
-            'cid': self.cid,
             'scraped_at': self.scraped_at.isoformat() if self.scraped_at else None,
             'search_query': self.search_query,
             'data_quality_score': self.data_quality_score,
@@ -319,6 +371,7 @@ class BusinessLead(Base):
             # Lead scoring
             'lead_score': self.lead_score,
             'lead_score_numeric': self.lead_score_numeric,
+            'star_rating': self.star_rating,
 
             # Legacy
             'owner_name': self.owner_name,
@@ -367,6 +420,7 @@ class BusinessLead(Base):
             'youtube': self.social_youtube,
             'place_id': self.place_id,
             'lead_score': self.lead_score,
+            'star_rating': self.star_rating,
             'sentiment_score': self.sentiment_score,
             'main_photo': self.main_photo,
         }
@@ -577,63 +631,54 @@ class ScrapeJob(Base):
         return min(100, int((self.leads_scraped / self.leads_target) * 100))
 
 
-class ExportHistory(Base):
-    """Model for tracking export history."""
+# Note: ExportHistory and WebhookHistory models removed (incomplete features)
 
-    __tablename__ = "export_history"
+
+class SavedSearch(Base):
+    """Model for saved search configurations (Feature 7.1)."""
+
+    __tablename__ = "saved_searches"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 
-    # Export details
-    filename = Column(String(500), nullable=False)
-    format = Column(String(50), nullable=False)  # csv, json, excel, google_sheets, cold_calling, email_campaign
-    record_count = Column(Integer, default=0)
-    file_size = Column(Integer, nullable=True)  # Size in bytes
+    # Search identity
+    name = Column(String(200), nullable=False)
+    description = Column(Text, nullable=True)
 
-    # Cloud upload (NEW)
-    cloud_provider = Column(String(50), nullable=True)  # s3, gcs
-    cloud_url = Column(String(1000), nullable=True)
+    # Search parameters
+    search_query = Column(String(500), nullable=False)
+    location = Column(String(200), nullable=True)
+    max_results = Column(Integer, default=100)
 
-    # Filters used
+    # Extraction options (stored as JSON for flexibility)
+    options = Column(JSON, nullable=True)
+
+    # Filters (stored as JSON)
     filters = Column(JSON, nullable=True)
 
-    # Status
-    status = Column(String(50), default='completed')  # pending, completed, failed
-    error_message = Column(Text, nullable=True)
+    # Usage tracking
+    use_count = Column(Integer, default=0)
+    last_used_at = Column(DateTime, nullable=True)
 
     # Timestamps
     created_at = Column(DateTime, default=func.now(), nullable=False)
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
     def __repr__(self):
-        return f"<ExportHistory(id={self.id}, file='{self.filename}', records={self.record_count})>"
+        return f"<SavedSearch(id={self.id}, name='{self.name}')>"
 
-
-class WebhookHistory(Base):
-    """Model for tracking webhook notifications."""
-
-    __tablename__ = "webhook_history"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-
-    # Webhook details
-    webhook_name = Column(String(100), nullable=False)
-    event_type = Column(String(100), nullable=False)
-    url = Column(String(500), nullable=True)
-
-    # Payload
-    payload = Column(JSON, nullable=True)
-
-    # Response
-    response_status = Column(Integer, nullable=True)
-    response_body = Column(Text, nullable=True)
-
-    # Status
-    success = Column(Boolean, default=False)
-    error_message = Column(Text, nullable=True)
-    retry_count = Column(Integer, default=0)
-
-    # Timestamps
-    sent_at = Column(DateTime, default=func.now(), nullable=False)
-
-    def __repr__(self):
-        return f"<WebhookHistory(id={self.id}, event='{self.event_type}', success={self.success})>"
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'description': self.description,
+            'search_query': self.search_query,
+            'location': self.location,
+            'max_results': self.max_results,
+            'options': self.options,
+            'filters': self.filters,
+            'use_count': self.use_count,
+            'last_used_at': self.last_used_at.isoformat() if self.last_used_at else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }

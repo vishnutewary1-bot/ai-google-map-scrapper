@@ -4,7 +4,7 @@ import argparse
 from loguru import logger
 
 from database import db_manager
-from scraper import GoogleMapsScraper
+from scraper import UnifiedGoogleMapsScraper as GoogleMapsScraper
 from utils import DataExporter
 from config.settings import settings
 

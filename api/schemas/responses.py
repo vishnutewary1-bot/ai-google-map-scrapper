@@ -96,6 +96,8 @@ class LeadResponse(BaseModel):
 
     # Metadata
     quality_score: Optional[int] = None
+    data_quality_score: Optional[int] = None
+    star_rating: Optional[int] = None
     search_query: Optional[str] = None
     notes: Optional[str] = None
     tags: Optional[List[str]] = None

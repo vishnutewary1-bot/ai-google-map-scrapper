@@ -37,6 +37,15 @@ try:
 except ImportError:
     HAS_CRM = False
 
+# Cloud storage integration
+try:
+    from utils.cloud_storage import CloudStorageManager
+    from config.settings import settings
+    HAS_CLOUD_STORAGE = True
+except ImportError:
+    HAS_CLOUD_STORAGE = False
+    CloudStorageManager = None
+
 
 class ExportService:
     """Service for exporting leads to various formats."""
@@ -109,6 +118,18 @@ class ExportService:
                     result.crm_url = crm_url
                 except Exception as e:
                     logger.error(f"CRM export failed: {e}")
+
+            # Upload to cloud storage if requested
+            if getattr(request, 'upload_to_cloud', None) and result.filepath:
+                try:
+                    cloud_url = self._upload_to_cloud(
+                        result.filepath,
+                        getattr(request, 'cloud_provider', 's3')
+                    )
+                    if cloud_url:
+                        result.cloud_url = cloud_url
+                except Exception as e:
+                    logger.error(f"Cloud upload failed: {e}")
 
             return result
 
@@ -363,6 +384,71 @@ class ExportService:
             os.remove(filepath)
             return True
         return False
+
+    def _upload_to_cloud(self, filepath: str, provider: str = 's3') -> Optional[str]:
+        """
+        Upload export file to cloud storage.
+
+        Args:
+            filepath: Local file path to upload
+            provider: Cloud provider ('s3' or 'gcs')
+
+        Returns:
+            Cloud URL if successful, None otherwise
+        """
+        if not HAS_CLOUD_STORAGE:
+            logger.warning("Cloud storage not available")
+            return None
+
+        try:
+            cloud = CloudStorageManager()
+
+            if provider == 's3':
+                # Initialize S3
+                if not (settings.aws_access_key and settings.aws_secret_key and settings.s3_bucket):
+                    logger.warning("S3 not configured")
+                    return None
+
+                cloud.init_s3(
+                    settings.aws_access_key,
+                    settings.aws_secret_key,
+                    settings.aws_region
+                )
+
+                result = cloud.upload_to_s3(
+                    filepath,
+                    settings.s3_bucket,
+                    make_public=True
+                )
+
+            elif provider == 'gcs':
+                # Initialize GCS
+                if not (settings.gcs_credentials_path and settings.gcs_bucket):
+                    logger.warning("GCS not configured")
+                    return None
+
+                cloud.init_gcs(settings.gcs_credentials_path)
+
+                result = cloud.upload_to_gcs(
+                    filepath,
+                    settings.gcs_bucket,
+                    make_public=True
+                )
+
+            else:
+                logger.warning(f"Unknown cloud provider: {provider}")
+                return None
+
+            if result.success:
+                logger.info(f"Uploaded to {provider}: {result.url}")
+                return result.url
+            else:
+                logger.error(f"Cloud upload failed: {result.error}")
+                return None
+
+        except Exception as e:
+            logger.error(f"Cloud upload error: {e}")
+            return None
 
 
 # Singleton instance
